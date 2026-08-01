@@ -1,15 +1,25 @@
-# Cipher — Gang Ops (v0.1)
+<h1 align="center">Cipher</h1>
 
-A modular encrypted criminal device for **QBox (qbx_core)** and **QBCore (qb-core)**.
-The device is a shell that hosts apps; current apps are **Gang Ops**,
-**Blackmarket**, and **Boosting**. Ship future apps (Dark Web Market,
-Contracts Board, etc.) by registering them in `shared/apps.lua` — no changes
-to the shell required.
+<p align="center">A modular criminal device for <strong>QBox</strong> and <strong>QBCore</strong> — gang ops, blackmarket and boosting in one encrypted tablet.</p>
 
-Visually it leans hard into a cyberpunk/hacker-terminal look: scanlines,
-glowing corner brackets, a typed boot sequence on open (the admin tablet
-gets its own red-accented variant), and glitch-style transitions between
-apps/tabs. The app rail uses real icons + labels, not abbreviations.
+<p align="center">
+  <a href="https://github.com/XyraL/cipher/releases"><img src="https://img.shields.io/github/v/release/XyraL/cipher?style=flat-square&color=55dcff&label=release" alt="Latest release"></a>
+  <img src="https://img.shields.io/badge/framework-QBox%20%7C%20QBCore-55dcff?style=flat-square" alt="framework">
+  <img src="https://img.shields.io/badge/price-free-30d158?style=flat-square" alt="price">
+  <a href="https://xyralscripts.dev/docs-cipher"><img src="https://img.shields.io/badge/docs-xyralscripts.dev-a889ff?style=flat-square" alt="docs"></a>
+  <a href="https://discord.gg/XRURAw4TM2"><img src="https://img.shields.io/badge/support-discord-5865F2?style=flat-square" alt="support"></a>
+</p>
+
+<p align="center">
+  <a href="https://xyralscripts.dev/cipher">Website</a> &nbsp;·&nbsp;
+  <a href="https://xyralscripts.dev/docs-cipher">Setup guide</a> &nbsp;·&nbsp;
+  <a href="https://github.com/XyraL/cipher/releases">Releases</a> &nbsp;·&nbsp;
+  <a href="https://discord.gg/XRURAw4TM2">Discord</a>
+</p>
+
+<!-- SCREENSHOTS: drop 2-3 in-game shots here once captured -->
+
+---
 
 ## Requirements
 - `ox_lib`
@@ -213,3 +223,31 @@ Webhook → Copy URL.
 Nothing in the UI talks to gang logic directly. The NUI calls a single relay
 (`call`), which routes to validated `ox_lib` server callbacks. The server is the
 sole source of truth for permissions and state.
+
+---
+
+## Documentation
+
+Full setup guide, requirements and troubleshooting:
+**[xyralscripts.dev/docs-cipher](https://xyralscripts.dev/docs-cipher)**
+
+## Support
+
+- **Found a bug?** [Open an issue](https://github.com/XyraL/cipher/issues)
+- **Need setup help?** [Join the Discord](https://discord.gg/XRURAw4TM2) — check the setup guide first, it usually has the answer
+
+## The rest of the Cipher line
+
+All free, all source-available.
+
+| Script | What it is |
+|---|---|
+| **[Cipher MDT](https://github.com/XyraL/cipher-mdt)** | full police MDT for QBox and QBCore — live CAD dispatch, civilian records, warrants, BOLOs and supervisor audit. |
+| **[Cipher Admin](https://github.com/XyraL/cipher-admin)** | advanced admin suite for QBox and QBCore — player management, bans, reports, inventory tools and entity inspection. |
+| **[Cipher Drone](https://github.com/XyraL/cipher-drone)** | deployable police drone for QBox and QBCore — smooth flight, thermal, spotlight, tracker darts and real counterplay. |
+| **[Cipher Trucking](https://github.com/XyraL/cipher-trucking)** | civilian trucking job for QBox and QBCore — live route map, truck ownership, fuel and maintenance, and companies. |
+
+## License
+
+Free to use on any server you own or operate, including commercial ones.
+**Do not redistribute or resell** — see [LICENSE](LICENSE) for the full terms.
