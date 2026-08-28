@@ -62,4 +62,11 @@ files {
     'web/app.js',
     'web/admin.js',
     'web/craft.js',
+    -- Leaflet is vendored (BSD-2) — NUI has no reliable internet, so no CDN.
+    'web/vendor/leaflet/leaflet.js',
+    'web/vendor/leaflet/leaflet.css',
+    'web/vendor/leaflet/images/*.png',
+    'web/vendor/leaflet/LICENSE.txt',
+    -- Map tile pyramid, shared with the rest of the line.
+    'web/assets/maps/tiles/*.webp',
 }

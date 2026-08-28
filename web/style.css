@@ -536,7 +536,7 @@ input::placeholder { color: #565d68; }
     margin-bottom: 14px; overflow: hidden; position: relative;
 }
 .territory-map {
-    width: 100%; height: 320px; display: block;
+    width: 100%; height: 380px; display: block;
     background: #0d1f2e; /* ocean base */
     background-image:
         linear-gradient(rgba(245,165,36,.05) 1px, transparent 1px),
@@ -794,4 +794,13 @@ input::placeholder { color: #565d68; }
 
 @media (prefers-reduced-motion: reduce) {
     *, .device, .tabview, .craft-frame { animation: none !important; }
+}
+
+/* Leaflet inherits the tablet theme rather than shipping its own. */
+.territory-map .leaflet-container { background: #0d1f2e; font: inherit; }
+.territory-map .leaflet-control-zoom a {
+    background: #14181f; color: #cfd6e4; border-color: rgba(255,255,255,.08);
+}
+.territory-map .leaflet-tooltip {
+    background: #14181f; color: #e8ecf4; border: 1px solid rgba(255,255,255,.12);
 }

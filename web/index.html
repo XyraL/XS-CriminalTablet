@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+    <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
     <link rel="stylesheet" href="style.css" />
     <title>cipher</title>
 </head>
@@ -272,7 +273,7 @@
                     <div class="tabview" data-tabview="territory">
                         <h2>Territory control</h2>
                         <div class="territory-map-wrap">
-                            <svg id="territoryMap" class="territory-map" viewBox="0 0 600 600" preserveAspectRatio="xMidYMid meet"></svg>
+                            <div id="territoryMap" class="territory-map"></div>
                             <div class="map-compass">N<span class="map-compass-arrow">▲</span></div>
                         </div>
                         <div id="territoryDetail" class="member territory-detail hidden"></div>
@@ -552,6 +553,7 @@
         </div>
     </div>
 
+    <script src="vendor/leaflet/leaflet.js"></script>
     <script src="app.js"></script>
     <script src="admin.js"></script>
     <script src="craft.js"></script>

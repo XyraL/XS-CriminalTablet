@@ -311,105 +311,61 @@ $('#inviteBtn').onclick = async () => {
     else flash(res.error || 'Failed', 'error');
 };
 
-// ── territory (signature) ──
-// GTA V's playable world is roughly -4500..4500 on X and -4500..8200 on Y
-// (Blaine County stretches further north than south) — this is a
-// stylized/abstract map, not a real one, so approximate normalization
-// ranges are fine; they just need to spread zones out sensibly.
-const MAP_BOUNDS_X = { min: -4500, max: 4500 };
-const MAP_BOUNDS_Y = { min: -4500, max: 8200 };
-function mapCoordX(v) {
-    const pct = (v - MAP_BOUNDS_X.min) / (MAP_BOUNDS_X.max - MAP_BOUNDS_X.min);
-    return Math.max(20, Math.min(580, pct * 600));
+// ── territory ──
+// The real satellite render, shared with the rest of the line. Leaflet is
+// vendored because NUI has no reliable internet; the tile pyramid ships in
+// assets/maps/tiles.
+const TMAP = {
+    imageW: 4096, imageH: 6144, tileSize: 512, nativeZoom: 4, maxZoom: 6,
+    world: { minX: -3900, maxX: 4300, minY: -4500, maxY: 8100 },
+};
+
+let _tmap = null;
+let _tmapZones = null;
+
+function tmapLatLng(wx, wy) {
+    const W = TMAP.world;
+    const px = ((wx - W.minX) / (W.maxX - W.minX)) * TMAP.imageW;
+    const py = ((W.maxY - wy) / (W.maxY - W.minY)) * TMAP.imageH;
+    return _tmap.unproject([px, py], TMAP.nativeZoom);
 }
-function mapCoordY(v) {
-    const pct = (v - MAP_BOUNDS_Y.min) / (MAP_BOUNDS_Y.max - MAP_BOUNDS_Y.min);
-    return Math.max(20, Math.min(580, pct * 600));
-}
 
-// Rough district labels at approximate world coords — decorative chrome,
-// not precise cartography, just enough to sell "this is a map."
-const MAP_DISTRICTS = [
-    { label: 'LOS SANTOS', x: -700, y: -1900 },
-    { label: 'VINEWOOD HILLS', x: 300, y: 550 },
-    { label: 'SANDY SHORES', x: 1900, y: 3700 },
-    { label: 'GRAPESEED', x: 1700, y: 4700 },
-    { label: 'PALETO BAY', x: -300, y: 6200 },
-    { label: 'BLAINE COUNTY', x: 1200, y: 2000 },
-];
+function ensureTerritoryMap() {
+    const el = document.getElementById('territoryMap');
+    if (!el || typeof L === 'undefined') return false;
+    if (_tmap) return true;
 
-function drawMapChrome(svg) {
-    const ns = 'http://www.w3.org/2000/svg';
-
-    // A rough landmass silhouette (not a real coastline) so the map reads
-    // as "an island/coast", with everything outside it tinted as ocean.
-    const land = document.createElementNS(ns, 'path');
-    land.setAttribute('class', 'map-land');
-    land.setAttribute('d',
-        'M 40 420 Q 30 300 110 230 Q 90 140 180 90 Q 280 30 420 50 ' +
-        'Q 540 70 570 160 Q 600 230 540 300 Q 580 380 520 460 ' +
-        'Q 480 560 360 580 Q 220 600 130 540 Q 60 500 40 420 Z');
-    svg.appendChild(land);
-
-    // Soft terrain tints — city/hills/desert, just radial glows roughly
-    // centered on each district, not hard borders.
-    const terrains = [
-        { x: -700, y: -1900, color: 'rgba(245,165,36,.10)', r: 140 },  // Los Santos: warm urban
-        { x: 300, y: 550, color: 'rgba(45,212,191,.08)', r: 110 },     // Vinewood: green
-        { x: 1700, y: 4000, color: 'rgba(180,140,60,.10)', r: 170 },   // Blaine County: sandy
-    ];
-    terrains.forEach((t, i) => {
-        const grad = document.createElementNS(ns, 'radialGradient');
-        grad.setAttribute('id', 'terrain' + i);
-        grad.innerHTML = `<stop offset="0%" stop-color="${t.color}"></stop><stop offset="100%" stop-color="${t.color}" stop-opacity="0"></stop>`;
-        const defs = svg.querySelector('defs') || svg.appendChild(document.createElementNS(ns, 'defs'));
-        defs.appendChild(grad);
-        const circle = document.createElementNS(ns, 'circle');
-        circle.setAttribute('cx', mapCoordX(t.x));
-        circle.setAttribute('cy', 600 - mapCoordY(t.y));
-        circle.setAttribute('r', t.r);
-        circle.setAttribute('fill', `url(#terrain${i})`);
-        svg.appendChild(circle);
+    _tmap = L.map(el, {
+        crs: L.CRS.Simple,
+        minZoom: 1, maxZoom: TMAP.maxZoom,
+        zoomControl: true, attributionControl: false,
+        zoomSnap: 0.25, wheelPxPerZoomLevel: 90,
     });
 
-    // A couple of faint "highway" lines for flavor.
-    const roads = document.createElementNS(ns, 'g');
-    roads.setAttribute('class', 'map-roads');
-    roads.innerHTML = `
-        <path d="M 80 460 Q 250 380 320 280 Q 400 160 520 110" />
-        <path d="M 150 520 Q 300 460 380 360 Q 460 260 560 220" />`;
-    svg.appendChild(roads);
+    const sw = _tmap.unproject([0, TMAP.imageH], TMAP.nativeZoom);
+    const ne = _tmap.unproject([TMAP.imageW, 0], TMAP.nativeZoom);
+    const bounds = new L.LatLngBounds(sw, ne);
 
-    MAP_DISTRICTS.forEach((d) => {
-        const t = document.createElementNS(ns, 'text');
-        t.setAttribute('x', mapCoordX(d.x));
-        t.setAttribute('y', 600 - mapCoordY(d.y));
-        t.setAttribute('class', 'map-district-label');
-        t.textContent = d.label;
-        svg.appendChild(t);
-    });
+    L.tileLayer('assets/maps/tiles/{z}_{x}_{y}.webp', {
+        tileSize: TMAP.tileSize, minZoom: 0, maxZoom: TMAP.maxZoom,
+        maxNativeZoom: TMAP.nativeZoom, noWrap: true, bounds,
+    }).addTo(_tmap);
 
-    // Radar sweep: a rotating wedge centered on the map, purely decorative.
-    const sweep = document.createElementNS(ns, 'g');
-    sweep.setAttribute('class', 'map-radar-sweep');
-    sweep.innerHTML = `
-        <defs>
-            <linearGradient id="sweepGrad" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0%" stop-color="var(--accent)" stop-opacity="0"></stop>
-                <stop offset="100%" stop-color="var(--accent)" stop-opacity="0.25"></stop>
-            </linearGradient>
-        </defs>
-        <path d="M 300 300 L 300 20 A 280 280 0 0 1 480 90 Z" fill="url(#sweepGrad)"></path>`;
-    svg.appendChild(sweep);
+    _tmap.setMaxBounds(bounds.pad(0.1));
+    _tmap.fitBounds(bounds);
+    _tmapZones = L.layerGroup().addTo(_tmap);
+
+    setTimeout(() => _tmap && _tmap.invalidateSize(), 60);
+    return true;
 }
 
 function renderTerritory() {
     const grid = $('#turfGrid');
-    const svg = $('#territoryMap');
     const terr = state.snapshot.territories || [];
     const myId = state.snapshot.gang ? state.snapshot.gang.id : null;
     grid.innerHTML = '';
-    if (svg) { svg.innerHTML = ''; drawMapChrome(svg); }
+    const hasMap = ensureTerritoryMap();
+    if (hasMap) _tmapZones.clearLayers();
     $('#territoryDetail').classList.add('hidden');
 
     terr.forEach((t) => {
@@ -430,24 +386,34 @@ function renderTerritory() {
             <div class="turf-holder ${holderCls}">${escapeHtml(holderTxt)}</div>`;
         grid.appendChild(card);
 
-        if (svg && t.coords) {
-            const x = mapCoordX(t.coords.x);
-            const y = 600 - mapCoordY(t.coords.y); // flip so north is up
-            const dotColor = mine ? 'var(--signal)' : (held ? 'var(--danger)' : 'var(--muted)');
-            const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-            g.setAttribute('class', 'map-zone' + (mine ? ' is-mine' : ''));
-            g.innerHTML = `
-                <circle cx="${x}" cy="${y}" r="${mine ? 14 : 10}" fill="${dotColor}" fill-opacity="0.18" stroke="${dotColor}" stroke-width="1.5"></circle>
-                <circle cx="${x}" cy="${y}" r="3.5" fill="${dotColor}"></circle>`;
-            g.style.cursor = 'pointer';
-            g.onclick = () => {
+        if (hasMap && t.coords) {
+            const dotColor = mine ? '#f5a524' : (held ? '#ff5a5f' : '#6b7280');
+
+            // Two circles like before: a soft claim radius and a hard centre.
+            // circleMarker keeps its pixel size across zoom, which reads
+            // better for territory dots than a world-sized circle would.
+            const ring = L.circleMarker(tmapLatLng(t.coords.x, t.coords.y), {
+                radius: mine ? 16 : 12,
+                color: dotColor, weight: 1.5,
+                fillColor: dotColor, fillOpacity: 0.18,
+            });
+            const core = L.circleMarker(tmapLatLng(t.coords.x, t.coords.y), {
+                radius: 4, color: dotColor, weight: 0, fillColor: dotColor, fillOpacity: 1,
+            });
+
+            const show = () => {
                 const detail = $('#territoryDetail');
                 detail.classList.remove('hidden');
                 detail.innerHTML = `
                     <span class="member-name">${escapeHtml(t.label)}</span>
                     <span class="member-rank ${holderCls}">${escapeHtml(holderTxt)}</span>`;
             };
-            svg.appendChild(g);
+            ring.on('click', show);
+            core.on('click', show);
+            ring.bindTooltip(t.label, { direction: 'top' });
+
+            ring.addTo(_tmapZones);
+            core.addTo(_tmapZones);
         }
     });
     if (!terr.length) grid.innerHTML = '<div class="log-empty">No territories configured.</div>';
