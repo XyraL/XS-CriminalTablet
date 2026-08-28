@@ -5,7 +5,7 @@ lua54 'yes'
 name 'cipher'
 author 'you'
 description 'Cipher — modular encrypted criminal device. First app: Gang Ops.'
-version '0.1.0'
+version '1.0.0'
 
 -- Works on QBox (qbx_core) OR QBCore (qb-core). The bridge auto-detects.
 -- Shared deps both frameworks support cleanly:
