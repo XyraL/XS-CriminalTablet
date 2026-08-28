@@ -317,7 +317,10 @@ $('#inviteBtn').onclick = async () => {
 // assets/maps/tiles.
 const TMAP = {
     imageW: 4096, imageH: 6144, tileSize: 512, nativeZoom: 4, maxZoom: 6,
-    world: { minX: -3900, maxX: 4300, minY: -4500, maxY: 8100 },
+    // Calibrated against landmarks with known coordinates — the depot on
+    // Terminal Island, Sandy Shores airfield, Mount Chiliad, Paleto Bay. The
+    // old numbers put the trucking depot in the sea.
+    world: { minX: -4508, maxX: 5086, minY: -4891, maxY: 8317 },
 };
 
 let _tmap = null;
