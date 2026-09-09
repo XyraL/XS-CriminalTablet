@@ -16,7 +16,7 @@ elseif GetResourceState('qb-core') == 'started' then
     Framework.core = exports['qb-core']:GetCoreObject()
 else
     -- Defer the error so the resource still loads its UI; log loudly.
-    print('^1[cipher]^0 No supported framework found. Start qbx_core or qb-core before cipher.')
+    print('^1[XS-CriminalTablet]^0 No supported framework found. Start qbx_core or qb-core before XS-CriminalTablet.')
 end
 
 local IS_SERVER = IsDuplicityVersion()
@@ -61,13 +61,13 @@ if IS_SERVER then
     function Framework.AddMoney(src, account, amount, reason)
         local player = Framework.GetPlayer(src)
         if not player then return false end
-        return player.Functions.AddMoney(account, amount, reason or 'cipher')
+        return player.Functions.AddMoney(account, amount, reason or 'xs-criminaltablet')
     end
 
     function Framework.RemoveMoney(src, account, amount, reason)
         local player = Framework.GetPlayer(src)
         if not player then return false end
-        return player.Functions.RemoveMoney(account, amount, reason or 'cipher')
+        return player.Functions.RemoveMoney(account, amount, reason or 'xs-criminaltablet')
     end
 
     function Framework.GetMoney(src, account)
@@ -78,6 +78,7 @@ if IS_SERVER then
 
     -- Server-side notify (wraps ox_lib so the UI/notify look is uniform).
     function Framework.Notify(src, msg, type)
+        if not src then return end
         TriggerClientEvent('ox_lib:notify', src, { description = msg, type = type or 'inform' })
     end
 else
@@ -96,6 +97,6 @@ else
 end
 
 if Config and Config.Debug then
-    print(('^2[cipher]^0 bridge loaded (%s) on %s'):format(
+    print(('^2[XS-CriminalTablet]^0 bridge loaded (%s) on %s'):format(
         Framework.name or 'none', IS_SERVER and 'server' or 'client'))
 end

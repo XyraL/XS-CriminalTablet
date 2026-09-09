@@ -58,19 +58,19 @@ local function vehiclePoolFor(level)
 end
 
 local function getStats(citizenid)
-    return MySQL.single.await('SELECT * FROM cipher_boost_stats WHERE citizenid = ?', { citizenid })
+    return MySQL.single.await('SELECT * FROM xs_boost_stats WHERE citizenid = ?', { citizenid })
 end
 
 local function ensureStats(citizenid, name)
     local row = getStats(citizenid)
     if row then return row end
-    MySQL.insert.await('INSERT INTO cipher_boost_stats (citizenid, name) VALUES (?, ?)', { citizenid, name or citizenid })
+    MySQL.insert.await('INSERT INTO xs_boost_stats (citizenid, name) VALUES (?, ?)', { citizenid, name or citizenid })
     return getStats(citizenid)
 end
 
 -- ── perks: passive modifiers bought with perk_points ──
 local function ownedPerkIds(citizenid)
-    local rows = MySQL.query.await('SELECT perk_id FROM cipher_boost_perks WHERE citizenid = ?', { citizenid }) or {}
+    local rows = MySQL.query.await('SELECT perk_id FROM xs_boost_perks WHERE citizenid = ?', { citizenid }) or {}
     local owned = {}
     for _, r in ipairs(rows) do owned[r.perk_id] = true end
     return owned
@@ -128,11 +128,11 @@ function Boosting.BuyPerk(src, perkId)
     if stats.perk_points < def.cost then return false, 'not enough perk points' end
 
     local ok = pcall(function()
-        MySQL.insert.await('INSERT INTO cipher_boost_perks (citizenid, perk_id) VALUES (?, ?)', { cid, perkId })
+        MySQL.insert.await('INSERT INTO xs_boost_perks (citizenid, perk_id) VALUES (?, ?)', { cid, perkId })
     end)
     if not ok then return false, 'already owned' end
 
-    MySQL.update('UPDATE cipher_boost_stats SET perk_points = perk_points - ? WHERE citizenid = ?', { def.cost, cid })
+    MySQL.update('UPDATE xs_boost_stats SET perk_points = perk_points - ? WHERE citizenid = ?', { def.cost, cid })
     return true
 end
 
@@ -168,7 +168,7 @@ end
 
 function Boosting.GetLeaderboard()
     local rows = MySQL.query.await(
-        'SELECT name, level, total_boosted, total_cash FROM cipher_boost_stats ORDER BY total_boosted DESC LIMIT 10') or {}
+        'SELECT name, level, total_boosted, total_cash FROM xs_boost_stats ORDER BY total_boosted DESC LIMIT 10') or {}
     for _, r in ipairs(rows) do
         r.badges = achievementCountFor(r.level, r.total_boosted)
     end
@@ -179,10 +179,10 @@ end
 function Boosting.AdminSearch(query)
     query = (query or ''):gsub('^%s+', ''):gsub('%s+$', '')
     if query == '' then
-        return MySQL.query.await('SELECT * FROM cipher_boost_stats ORDER BY total_boosted DESC LIMIT 25') or {}
+        return MySQL.query.await('SELECT * FROM xs_boost_stats ORDER BY total_boosted DESC LIMIT 25') or {}
     end
     return MySQL.query.await(
-        'SELECT * FROM cipher_boost_stats WHERE name LIKE ? OR citizenid = ? ORDER BY total_boosted DESC LIMIT 25',
+        'SELECT * FROM xs_boost_stats WHERE name LIKE ? OR citizenid = ? ORDER BY total_boosted DESC LIMIT 25',
         { '%' .. query .. '%', query }) or {}
 end
 
@@ -197,7 +197,7 @@ function Boosting.AdminSetStats(citizenid, fields)
     local perkPoints = math.max(0, math.floor(tonumber(fields.perk_points) or row.perk_points))
 
     MySQL.update(
-        'UPDATE cipher_boost_stats SET level = ?, xp = ?, total_boosted = ?, total_cash = ?, perk_points = ? WHERE citizenid = ?',
+        'UPDATE xs_boost_stats SET level = ?, xp = ?, total_boosted = ?, total_cash = ?, perk_points = ? WHERE citizenid = ?',
         { level, xp, totalBoosted, totalCash, perkPoints, citizenid })
     return true
 end
@@ -206,15 +206,15 @@ function Boosting.AdminResetStats(citizenid)
     local row = getStats(citizenid)
     if not row then return false, 'no stats for that citizenid' end
     MySQL.update(
-        'UPDATE cipher_boost_stats SET level = 1, xp = 0, total_boosted = 0, total_cash = 0, perk_points = 0, last_boost_at = 0 WHERE citizenid = ?',
+        'UPDATE xs_boost_stats SET level = 1, xp = 0, total_boosted = 0, total_cash = 0, perk_points = 0, last_boost_at = 0 WHERE citizenid = ?',
         { citizenid })
-    MySQL.update('DELETE FROM cipher_boost_perks WHERE citizenid = ?', { citizenid })
+    MySQL.update('DELETE FROM xs_boost_perks WHERE citizenid = ?', { citizenid })
     return true
 end
 
 function Boosting.AdminGetDashboard()
     local totals = MySQL.single.await(
-        'SELECT COUNT(*) AS players, COALESCE(SUM(total_boosted),0) AS boosted, COALESCE(SUM(total_cash),0) AS cash FROM cipher_boost_stats')
+        'SELECT COUNT(*) AS players, COALESCE(SUM(total_boosted),0) AS boosted, COALESCE(SUM(total_cash),0) AS cash FROM xs_boost_stats')
         or { players = 0, boosted = 0, cash = 0 }
     local activeJobs = 0
     local seen = {}
@@ -316,7 +316,7 @@ function Boosting.InviteCoop(src, targetId)
     if active[targetId] then return false, 'that player is already on a job' end
 
     pendingCoopInvites[targetId] = { fromSrc = src, fromName = c.names[src] }
-    TriggerClientEvent('cipher:client:coopInvite', targetId, { fromName = c.names[src] })
+    TriggerClientEvent('XS-CriminalTablet:client:coopInvite', targetId, { fromName = c.names[src] })
     return true
 end
 
@@ -332,6 +332,8 @@ function Boosting.AcceptCoopInvite(src)
     c.members[#c.members + 1] = src
     c.names[src] = Framework.GetName(src) or 'Someone'
     Framework.Notify(invite.fromSrc, ('%s joined your crew.'):format(c.names[src]), 'success')
+    TriggerClientEvent('XS-CriminalTablet:client:refresh', invite.fromSrc)
+    TriggerClientEvent('XS-CriminalTablet:client:refresh', src)
     return true
 end
 
@@ -372,12 +374,13 @@ function Boosting.Accept(src, wantedId)
     local plate = ('BST%04d'):format(math.random(0, 9999))
 
     active[src] = { stage = 'theft', startedAt = os.time() * 1000, vehicleDef = v, plate = plate, mods = mods,
-                     timeLimitSeconds = Config.Boosting.timeLimitSeconds }
+                     spawn = spawn, timeLimitSeconds = Config.Boosting.timeLimitSeconds }
     local g = Config.Boosting.guards
     local guardCount = g.enabled and math.max(0, g.count - mods.guardReduction) or 0
-    TriggerClientEvent('cipher:client:boostUpdate', src,
+    TriggerClientEvent('XS-CriminalTablet:client:boostUpdate', src,
         { stage = 'theft', spawn = spawn, model = v.model, label = v.label or v.model, plate = plate,
           searchRadius = Config.Boosting.searchRadius, guardTriggerRadius = Config.Boosting.guardTriggerRadius,
+          spawnRadius = Config.Boosting.searchRadius + 50.0,
           dispatchDelay = mods.dispatchDelay,
           guards = guardCount > 0 and { count = guardCount, radius = g.radius, model = g.model, weapon = g.weapon } or nil })
     return true
@@ -426,18 +429,18 @@ function Boosting.AcceptCoop(src)
     local job = {
         stage = 'theft', startedAt = os.time() * 1000, vehicleDef = v, plate = plate,
         coop = true, crew = c.members, crewNames = c.names, leaderSrc = src, cids = cids, mods = leaderMods,
-        timeLimitSeconds = Config.Boosting.coop.timeLimitSeconds,
+        spawn = spawn, timeLimitSeconds = Config.Boosting.coop.timeLimitSeconds,
     }
-    -- Only the leader's client actually spawns the vehicle/guards/buyer ped
-    -- — everyone else would otherwise spawn their OWN duplicate set of
-    -- entities at the same spot. Non-leaders just see what the leader's
-    -- client creates (it's all networked) and help fight off guards.
+    -- Every member gets the same spot. Whoever reaches it first spawns the
+    -- vehicle (and later the guards / buyer) via the claim callbacks below,
+    -- so nothing depends on where the leader happens to be.
     for _, m in ipairs(c.members) do
         active[m] = job
-        TriggerClientEvent('cipher:client:boostUpdate', m,
+        TriggerClientEvent('XS-CriminalTablet:client:boostUpdate', m,
             { stage = 'theft', spawn = spawn, model = v.model, label = v.label or v.model, plate = plate,
               isLeader = (m == src),
               searchRadius = Config.Boosting.searchRadius, guardTriggerRadius = Config.Boosting.guardTriggerRadius,
+              spawnRadius = Config.Boosting.searchRadius + 50.0,
               dispatchDelay = 0, -- coop always alerts instantly, no perk applies
               coop = true, crewSize = #c.members,
               guards = guardCount > 0 and { count = guardCount, radius = g.radius, model = g.model, weapon = g.weapon } or nil })
@@ -452,11 +455,11 @@ function Boosting.Cancel(src)
     if job.coop then
         for _, m in ipairs(job.crew) do
             active[m] = nil
-            TriggerClientEvent('cipher:client:boostUpdate', m, nil)
+            TriggerClientEvent('XS-CriminalTablet:client:boostUpdate', m, nil)
         end
     else
         active[src] = nil
-        TriggerClientEvent('cipher:client:boostUpdate', src, nil)
+        TriggerClientEvent('XS-CriminalTablet:client:boostUpdate', src, nil)
     end
     return true
 end
@@ -466,19 +469,18 @@ end
 function Boosting.DoHotwire(src, netId)
     local job = active[src]
     if not job or job.stage ~= 'theft' then return false, 'no active theft' end
-    if job.coop and src ~= job.leaderSrc then return false, 'only the crew leader can do this' end
+    if not job.vehicleNetId or netId ~= job.vehicleNetId then return false, 'wrong vehicle' end
 
     local dropoff = Config.Boosting.dropoffs[math.random(#Config.Boosting.dropoffs)]
     job.stage = 'dropoff'
-    job.vehicleNetId = netId
     job.dropoff = dropoff
 
     local payload = { stage = 'dropoff', dropoff = dropoff, dropoffRadius = Config.Boosting.dropoffRadius,
-                       buyerPedModel = Config.Boosting.buyerPedModel }
+                       buyerPedModel = Config.Boosting.buyerPedModel, vehicleNetId = netId }
     if job.coop then
-        for _, m in ipairs(job.crew) do TriggerClientEvent('cipher:client:boostUpdate', m, payload) end
+        for _, m in ipairs(job.crew) do TriggerClientEvent('XS-CriminalTablet:client:boostUpdate', m, payload) end
     else
-        TriggerClientEvent('cipher:client:boostUpdate', src, payload)
+        TriggerClientEvent('XS-CriminalTablet:client:boostUpdate', src, payload)
     end
     return true
 end
@@ -504,11 +506,11 @@ local function rewardMember(src, cid, v, cash, xp)
     end
 
     MySQL.update(
-        'UPDATE cipher_boost_stats SET xp = ?, level = ?, total_boosted = total_boosted + 1, ' ..
+        'UPDATE xs_boost_stats SET xp = ?, level = ?, total_boosted = total_boosted + 1, ' ..
         'total_cash = total_cash + ?, last_boost_at = ?, perk_points = perk_points + ?, name = ? WHERE citizenid = ?',
         { newXp, newLevel, cash, os.time() * 1000, perkPointsGained, Framework.GetName(src) or cid, cid })
 
-    Framework.AddMoney(src, Config.Boosting.cashAccount or 'cash', cash, 'cipher-boost-sale')
+    Framework.AddMoney(src, Config.Boosting.cashAccount or 'cash', cash, 'xs-boost-sale')
     Framework.Notify(src, ('Sold — +$%d, +%d XP.'):format(cash, xp), 'success')
     if leveledUp then
         Framework.Notify(src, ('Level up! You are now a %s.'):format(levelDefFor(newLevel).label), 'success')
@@ -522,7 +524,7 @@ local function rewardMember(src, cid, v, cash, xp)
         Framework.Notify(src, ('Achievement unlocked: %s'):format(label), 'success')
     end
 
-    MySQL.insert('INSERT INTO cipher_boost_log (name, vehicle_label, cash) VALUES (?, ?, ?)',
+    MySQL.insert('INSERT INTO xs_boost_log (name, vehicle_label, cash) VALUES (?, ?, ?)',
         { Framework.GetName(src) or cid, v.label or v.model, cash })
 end
 
@@ -533,7 +535,6 @@ function Boosting.DoDropoff(src, netId)
     local job = active[src]
     if not job or job.stage ~= 'dropoff' or job.vehicleNetId == nil then return false, 'no active drop-off' end
     if netId ~= job.vehicleNetId then return false, 'wrong vehicle' end
-    if job.coop and src ~= job.leaderSrc then return false, 'only the crew leader can do this' end
 
     local vehicle = NetworkGetEntityFromNetworkId(netId)
     if vehicle == 0 or not DoesEntityExist(vehicle) then return false, 'vehicle not found' end
@@ -552,11 +553,11 @@ function Boosting.DoDropoff(src, netId)
     if job.coop then
         for _, m in ipairs(job.crew) do
             active[m] = nil
-            TriggerClientEvent('cipher:client:boostUpdate', m, nil)
+            TriggerClientEvent('XS-CriminalTablet:client:boostUpdate', m, nil)
         end
     else
         active[src] = nil
-        TriggerClientEvent('cipher:client:boostUpdate', src, nil)
+        TriggerClientEvent('XS-CriminalTablet:client:boostUpdate', src, nil)
     end
 
     local v = job.vehicleDef
@@ -596,7 +597,7 @@ end
 
 function Boosting.GetRecentActivity()
     return MySQL.query.await(
-        'SELECT name, vehicle_label, cash, created_at FROM cipher_boost_log ORDER BY id DESC LIMIT ?',
+        'SELECT name, vehicle_label, cash, created_at FROM xs_boost_log ORDER BY id DESC LIMIT ?',
         { Config.Boosting.recentActivityLimit or 10 }) or {}
 end
 
@@ -608,7 +609,7 @@ CreateThread(function()
                 active[src] = nil
             elseif (os.time() * 1000) - job.startedAt > (job.timeLimitSeconds or Config.Boosting.timeLimitSeconds) * 1000 then
                 active[src] = nil
-                TriggerClientEvent('cipher:client:boostUpdate', src, nil)
+                TriggerClientEvent('XS-CriminalTablet:client:boostUpdate', src, nil)
                 Framework.Notify(src, 'Job window expired.', 'error')
             end
         end
@@ -620,7 +621,7 @@ CreateThread(function()
     while true do
         Wait(Config.Boosting.wanted.rotateMinutes * 60 * 1000)
         rollWanted()
-        if Config.Debug then print('^3[cipher]^0 boosting wanted vehicles rerolled') end
+        if Config.Debug then print('^3[XS-CriminalTablet]^0 boosting wanted vehicles rerolled') end
     end
 end)
 
@@ -636,81 +637,130 @@ AddEventHandler('playerDropped', function()
     end
 end)
 
-lib.callback.register('cipher:boosting:getStatus', function(src)
+lib.callback.register('XS-CriminalTablet:boosting:getStatus', function(src)
     return Boosting.GetStatus(src)
 end)
 
-lib.callback.register('cipher:boosting:getCrewStatus', function(src)
+lib.callback.register('XS-CriminalTablet:boosting:getCrewStatus', function(src)
     return Boosting.GetCrewStatus(src)
 end)
 
-lib.callback.register('cipher:boosting:inviteCoop', function(src, targetId)
+lib.callback.register('XS-CriminalTablet:boosting:inviteCoop', function(src, targetId)
     local ok, err = Boosting.InviteCoop(src, targetId)
     return { ok = ok, error = err }
 end)
 
-lib.callback.register('cipher:boosting:cancelCrew', function(src)
+lib.callback.register('XS-CriminalTablet:boosting:cancelCrew', function(src)
     local ok, err = Boosting.CancelCrew(src)
     return { ok = ok, error = err }
 end)
 
-lib.callback.register('cipher:boosting:acceptCoop', function(src)
+lib.callback.register('XS-CriminalTablet:boosting:acceptCoop', function(src)
     local ok, err = Boosting.AcceptCoop(src)
     return { ok = ok, error = err }
 end)
 
-RegisterNetEvent('cipher:server:acceptCoopInvite', function()
+RegisterNetEvent('XS-CriminalTablet:server:acceptCoopInvite', function()
     local src = source
     local ok, err = Boosting.AcceptCoopInvite(src)
     Framework.Notify(src, ok and 'Joined the crew.' or ('Could not join: ' .. tostring(err)), ok and 'success' or 'error')
 end)
 
-lib.callback.register('cipher:boosting:getPerks', function(src)
+lib.callback.register('XS-CriminalTablet:boosting:getPerks', function(src)
     local perks, perkPoints = Boosting.GetPerks(src)
     return { perks = perks, perkPoints = perkPoints }
 end)
 
-lib.callback.register('cipher:boosting:buyPerk', function(src, perkId)
+lib.callback.register('XS-CriminalTablet:boosting:buyPerk', function(src, perkId)
     local ok, err = Boosting.BuyPerk(src, perkId)
     return { ok = ok, error = err }
 end)
 
-lib.callback.register('cipher:boosting:getLeaderboard', function()
+lib.callback.register('XS-CriminalTablet:boosting:getLeaderboard', function()
     return Boosting.GetLeaderboard()
 end)
 
-lib.callback.register('cipher:boosting:getAvailableVehicles', function(src)
+lib.callback.register('XS-CriminalTablet:boosting:getAvailableVehicles', function(src)
     return Boosting.GetAvailableVehicles(src)
 end)
 
-lib.callback.register('cipher:boosting:getRecentActivity', function()
+lib.callback.register('XS-CriminalTablet:boosting:getRecentActivity', function()
     return Boosting.GetRecentActivity()
 end)
 
-lib.callback.register('cipher:boosting:getAchievements', function(src)
+lib.callback.register('XS-CriminalTablet:boosting:getAchievements', function(src)
     return Boosting.GetAchievements(src)
 end)
 
-lib.callback.register('cipher:boosting:getWanted', function()
+lib.callback.register('XS-CriminalTablet:boosting:getWanted', function()
     return Boosting.GetWanted()
 end)
 
-lib.callback.register('cipher:boosting:accept', function(src, wantedId)
+lib.callback.register('XS-CriminalTablet:boosting:accept', function(src, wantedId)
     local ok, err = Boosting.Accept(src, wantedId)
     return { ok = ok, error = err }
 end)
 
-lib.callback.register('cipher:boosting:cancel', function(src)
+lib.callback.register('XS-CriminalTablet:boosting:cancel', function(src)
     local ok, err = Boosting.Cancel(src)
     return { ok = ok, error = err }
 end)
 
-lib.callback.register('cipher:boosting:doHotwire', function(src, netId)
+-- Spawn claims: the first crew member to reach something spawns it, the
+-- rest are told its network id. A claim held by someone who has since
+-- dropped is handed on.
+local function claimSpawn(src, wantStage, spawnerKey, netIdKey)
+    local job = active[src]
+    if not job or job.stage ~= wantStage then return { ok = false } end
+    if job[netIdKey] then return { ok = false, netId = job[netIdKey] } end
+    local holder = job[spawnerKey]
+    if holder and holder ~= src and GetPlayerName(holder) ~= nil then return { ok = false } end
+    job[spawnerKey] = src
+    return { ok = true }
+end
+
+local function registerSpawn(src, wantStage, spawnerKey, netIdKey, netId, event)
+    local job = active[src]
+    if not job or job.stage ~= wantStage or job[spawnerKey] ~= src then return { ok = false } end
+    netId = tonumber(netId)
+    if not netId then return { ok = false } end
+    job[netIdKey] = netId
+    local targets = job.coop and job.crew or { src }
+    for _, m in ipairs(targets) do
+        if m ~= src then TriggerClientEvent(event, m, { netId = netId }) end
+    end
+    return { ok = true }
+end
+
+lib.callback.register('XS-CriminalTablet:boosting:claimVehicle', function(src)
+    return claimSpawn(src, 'theft', 'vehicleSpawner', 'vehicleNetId')
+end)
+
+lib.callback.register('XS-CriminalTablet:boosting:registerVehicle', function(src, netId)
+    return registerSpawn(src, 'theft', 'vehicleSpawner', 'vehicleNetId', netId, 'XS-CriminalTablet:client:boostVehicle')
+end)
+
+lib.callback.register('XS-CriminalTablet:boosting:claimGuards', function(src)
+    local job = active[src]
+    if not job or job.stage ~= 'theft' or job.guardsClaimed then return { ok = false } end
+    job.guardsClaimed = src
+    return { ok = true }
+end)
+
+lib.callback.register('XS-CriminalTablet:boosting:claimBuyer', function(src)
+    return claimSpawn(src, 'dropoff', 'buyerSpawner', 'buyerNetId')
+end)
+
+lib.callback.register('XS-CriminalTablet:boosting:registerBuyer', function(src, netId)
+    return registerSpawn(src, 'dropoff', 'buyerSpawner', 'buyerNetId', netId, 'XS-CriminalTablet:client:boostBuyer')
+end)
+
+lib.callback.register('XS-CriminalTablet:boosting:doHotwire', function(src, netId)
     local ok, err = Boosting.DoHotwire(src, tonumber(netId))
     return { ok = ok, error = err }
 end)
 
-lib.callback.register('cipher:boosting:doDropoff', function(src, netId)
+lib.callback.register('XS-CriminalTablet:boosting:doDropoff', function(src, netId)
     local ok, err = Boosting.DoDropoff(src, tonumber(netId))
     return { ok = ok, error = err }
 end)

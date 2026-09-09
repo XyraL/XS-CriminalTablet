@@ -23,7 +23,7 @@ local function randomHandle()
 end
 
 function Chat.GetOrCreateHandle(citizenid)
-    local row = MySQL.single.await('SELECT handle FROM cipher_chat_handles WHERE citizenid = ?', { citizenid })
+    local row = MySQL.single.await('SELECT handle FROM xs_chat_handles WHERE citizenid = ?', { citizenid })
     if row then return row.handle end
 
     -- Collision odds are tiny (adjectives × nouns × 65536 combos) but the
@@ -31,7 +31,7 @@ function Chat.GetOrCreateHandle(citizenid)
     for _ = 1, 5 do
         local handle = randomHandle()
         local ok = pcall(function()
-            MySQL.insert.await('INSERT INTO cipher_chat_handles (citizenid, handle) VALUES (?, ?)', { citizenid, handle })
+            MySQL.insert.await('INSERT INTO xs_chat_handles (citizenid, handle) VALUES (?, ?)', { citizenid, handle })
         end)
         if ok then return handle end
     end
@@ -39,7 +39,7 @@ function Chat.GetOrCreateHandle(citizenid)
 end
 
 function Chat.ResolveHandle(handle)
-    local row = MySQL.single.await('SELECT citizenid FROM cipher_chat_handles WHERE handle = ?', { handle })
+    local row = MySQL.single.await('SELECT citizenid FROM xs_chat_handles WHERE handle = ?', { handle })
     return row and row.citizenid or nil
 end
 
@@ -55,12 +55,12 @@ function Chat.SetHandle(src, desired)
     local cid = Framework.GetCitizenId(src)
     if not cid then return false, 'no character' end
 
-    local taken = MySQL.single.await('SELECT citizenid FROM cipher_chat_handles WHERE handle = ?', { desired })
+    local taken = MySQL.single.await('SELECT citizenid FROM xs_chat_handles WHERE handle = ?', { desired })
     if taken and taken.citizenid ~= cid then return false, 'handle already taken' end
 
     Chat.GetOrCreateHandle(cid) -- ensure a row exists before we try to update it
     local ok = pcall(function()
-        MySQL.update.await('UPDATE cipher_chat_handles SET handle = ? WHERE citizenid = ?', { desired, cid })
+        MySQL.update.await('UPDATE xs_chat_handles SET handle = ? WHERE citizenid = ?', { desired, cid })
     end)
     if not ok then return false, 'handle already taken' end
     return true, desired
@@ -69,7 +69,7 @@ end
 -- ── world feed ──
 function Chat.GetWorldHistory()
     local rows = MySQL.query.await(
-        'SELECT handle, message, created_at FROM cipher_chat_world ORDER BY id DESC LIMIT ?',
+        'SELECT handle, message, created_at FROM xs_chat_world ORDER BY id DESC LIMIT ?',
         { Config.Chat.worldHistoryLimit }) or {}
     local list = {}
     for i = #rows, 1, -1 do list[#list + 1] = rows[i] end -- oldest first
@@ -79,14 +79,14 @@ end
 -- ── admin moderation (no gang/anonymity gating — staff-only via admin.lua's ACE check) ──
 function Chat.GetWorldHistoryAdmin()
     local rows = MySQL.query.await(
-        'SELECT id, handle, message, created_at FROM cipher_chat_world ORDER BY id DESC LIMIT ?',
+        'SELECT id, handle, message, created_at FROM xs_chat_world ORDER BY id DESC LIMIT ?',
         { Config.Chat.worldHistoryLimit }) or {}
     return rows
 end
 
 function Chat.DeleteWorldMessage(id)
     if not id then return false, 'no message id' end
-    MySQL.update('DELETE FROM cipher_chat_world WHERE id = ?', { id })
+    MySQL.update('DELETE FROM xs_chat_world WHERE id = ?', { id })
     return true
 end
 
@@ -100,8 +100,8 @@ function Chat.PostWorld(src, message)
     local handle = Chat.GetOrCreateHandle(cid)
     if not handle then return false, 'could not assign a handle' end
 
-    MySQL.insert.await('INSERT INTO cipher_chat_world (handle, message) VALUES (?, ?)', { handle, message })
-    TriggerClientEvent('cipher:client:chatWorldMessage', -1, { handle = handle, message = message, created_at = os.date('%Y-%m-%d %H:%M:%S') })
+    MySQL.insert.await('INSERT INTO xs_chat_world (handle, message) VALUES (?, ?)', { handle, message })
+    TriggerClientEvent('XS-CriminalTablet:client:chatWorldMessage', -1, { handle = handle, message = message, created_at = os.date('%Y-%m-%d %H:%M:%S') })
     return true, handle
 end
 
@@ -115,7 +115,7 @@ function Chat.GetThreads(src)
         SELECT
             CASE WHEN from_citizenid = ? THEN to_handle ELSE from_handle END AS handle,
             message, created_at, from_citizenid, read_at
-        FROM cipher_chat_dms
+        FROM xs_chat_dms
         WHERE from_citizenid = ? OR to_citizenid = ?
         ORDER BY id DESC
     ]], { cid, cid, cid }) or {}
@@ -144,12 +144,12 @@ function Chat.GetThread(src, otherHandle)
 
     local rows = MySQL.query.await([[
         SELECT from_handle, message, created_at, to_citizenid
-        FROM cipher_chat_dms
+        FROM xs_chat_dms
         WHERE (from_citizenid = ? AND to_citizenid = ?) OR (from_citizenid = ? AND to_citizenid = ?)
         ORDER BY id DESC LIMIT ?
     ]], { cid, otherCid, otherCid, cid, Config.Chat.dmHistoryLimit }) or {}
 
-    MySQL.update('UPDATE cipher_chat_dms SET read_at = ? WHERE to_citizenid = ? AND from_citizenid = ? AND read_at = 0',
+    MySQL.update('UPDATE xs_chat_dms SET read_at = ? WHERE to_citizenid = ? AND from_citizenid = ? AND read_at = 0',
         { os.time() * 1000, cid, otherCid })
 
     local list = {}
@@ -171,14 +171,14 @@ function Chat.SendDM(src, toHandle, message)
     if toCid == cid then return false, "you can't message yourself" end
 
     MySQL.insert.await(
-        'INSERT INTO cipher_chat_dms (from_citizenid, to_citizenid, from_handle, to_handle, message) VALUES (?, ?, ?, ?, ?)',
+        'INSERT INTO xs_chat_dms (from_citizenid, to_citizenid, from_handle, to_handle, message) VALUES (?, ?, ?, ?, ?)',
         { cid, toCid, fromHandle, toHandle, message })
 
     -- deliver live if they're online right now
     for _, p in ipairs(GetPlayers()) do
         local s = tonumber(p)
         if Framework.GetCitizenId(s) == toCid then
-            TriggerClientEvent('cipher:client:chatDM', s, { handle = fromHandle, message = message })
+            TriggerClientEvent('XS-CriminalTablet:client:chatDM', s, { handle = fromHandle, message = message })
             break
         end
     end
@@ -186,40 +186,40 @@ function Chat.SendDM(src, toHandle, message)
     return true, fromHandle
 end
 
-lib.callback.register('cipher:chat:getMyHandle', function(src)
+lib.callback.register('XS-CriminalTablet:chat:getMyHandle', function(src)
     if not requireGang(src) then return nil end
     local cid = Framework.GetCitizenId(src)
     return cid and Chat.GetOrCreateHandle(cid) or nil
 end)
 
-lib.callback.register('cipher:chat:setHandle', function(src, desired)
+lib.callback.register('XS-CriminalTablet:chat:setHandle', function(src, desired)
     if not requireGang(src) then return { ok = false, error = 'no gang' } end
     local ok, res = Chat.SetHandle(src, desired)
     return { ok = ok, error = not ok and res or nil, handle = ok and res or nil }
 end)
 
-lib.callback.register('cipher:chat:getWorldHistory', function(src)
+lib.callback.register('XS-CriminalTablet:chat:getWorldHistory', function(src)
     if not requireGang(src) then return {} end
     return Chat.GetWorldHistory()
 end)
 
-lib.callback.register('cipher:chat:postWorld', function(src, message)
+lib.callback.register('XS-CriminalTablet:chat:postWorld', function(src, message)
     if not requireGang(src) then return { ok = false, error = 'no gang' } end
     local ok, res = Chat.PostWorld(src, message)
     return { ok = ok, error = not ok and res or nil }
 end)
 
-lib.callback.register('cipher:chat:getThreads', function(src)
+lib.callback.register('XS-CriminalTablet:chat:getThreads', function(src)
     if not requireGang(src) then return {} end
     return Chat.GetThreads(src)
 end)
 
-lib.callback.register('cipher:chat:getThread', function(src, handle)
+lib.callback.register('XS-CriminalTablet:chat:getThread', function(src, handle)
     if not requireGang(src) then return {} end
     return Chat.GetThread(src, handle)
 end)
 
-lib.callback.register('cipher:chat:sendDM', function(src, toHandle, message)
+lib.callback.register('XS-CriminalTablet:chat:sendDM', function(src, toHandle, message)
     if not requireGang(src) then return { ok = false, error = 'no gang' } end
     local ok, res = Chat.SendDM(src, toHandle, message)
     return { ok = ok, error = not ok and res or nil }

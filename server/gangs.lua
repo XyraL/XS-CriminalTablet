@@ -27,17 +27,17 @@ end
 
 -- ── loading ─────────────────────────────────────────────────
 local function loadGang(id)
-    local row = MySQL.single.await('SELECT * FROM cipher_gangs WHERE id = ?', { id })
+    local row = MySQL.single.await('SELECT * FROM xs_gangs WHERE id = ?', { id })
     if not row then return nil end
 
     local ranks = {}
-    for _, r in ipairs(MySQL.query.await('SELECT * FROM cipher_gang_ranks WHERE gang_id = ?', { id }) or {}) do
+    for _, r in ipairs(MySQL.query.await('SELECT * FROM xs_gang_ranks WHERE gang_id = ?', { id }) or {}) do
         local perms = r.permissions == '"*"' and '*' or json.decode(r.permissions)
         ranks[r.grade] = { name = r.name, permissions = perms }
     end
 
     local members = {}
-    for _, m in ipairs(MySQL.query.await('SELECT * FROM cipher_gang_members WHERE gang_id = ?', { id }) or {}) do
+    for _, m in ipairs(MySQL.query.await('SELECT * FROM xs_gang_members WHERE gang_id = ?', { id }) or {}) do
         members[m.citizenid] = { citizenid = m.citizenid, name = m.name, grade = m.grade, rep = m.rep or 0,
             dues_paid_at = m.dues_paid_at or 0, last_seen = m.last_seen or 0 }
     end
@@ -57,7 +57,7 @@ function Gangs.GetByCitizen(citizenid)
     for id, gang in pairs(cache) do
         if gang.members[citizenid] then return gang end
     end
-    local row = MySQL.single.await('SELECT gang_id FROM cipher_gang_members WHERE citizenid = ?', { citizenid })
+    local row = MySQL.single.await('SELECT gang_id FROM xs_gang_members WHERE citizenid = ?', { citizenid })
     if row then return Gangs.Get(row.gang_id) end
     return nil
 end
@@ -70,7 +70,7 @@ end
 
 -- ── logging ─────────────────────────────────────────────────
 function Gangs.Log(gangId, message)
-    MySQL.insert('INSERT INTO cipher_gang_logs (gang_id, message) VALUES (?, ?)', { gangId, message })
+    MySQL.insert('INSERT INTO xs_gang_logs (gang_id, message) VALUES (?, ?)', { gangId, message })
 end
 
 -- ── permission check ────────────────────────────────────────
@@ -97,45 +97,45 @@ end
 
 function Gangs.SyncFromConfig()
     for name, def in pairs(Config.Gangs) do
-        local row = MySQL.single.await('SELECT id FROM cipher_gangs WHERE name = ?', { name })
+        local row = MySQL.single.await('SELECT id FROM xs_gangs WHERE name = ?', { name })
         local gangId
 
         if not row then
             gangId = MySQL.insert.await(
-                'INSERT INTO cipher_gangs (name, label, owner, last_active) VALUES (?, ?, ?, ?)',
+                'INSERT INTO xs_gangs (name, label, owner, last_active) VALUES (?, ?, ?, ?)',
                 { name, def.label or name, def.boss or '', now() })
             for grade, rank in pairs(Config.DefaultRanks) do
                 MySQL.insert.await(
-                    'INSERT INTO cipher_gang_ranks (gang_id, grade, name, permissions) VALUES (?, ?, ?, ?)',
+                    'INSERT INTO xs_gang_ranks (gang_id, grade, name, permissions) VALUES (?, ?, ?, ?)',
                     { gangId, grade, rank.name, jsonPerms(rank.permissions) })
             end
-            if Config.Debug then print(('^2[cipher]^0 seeded gang "%s" (#%d) from config'):format(name, gangId)) end
+            if Config.Debug then print(('^2[XS-CriminalTablet]^0 seeded gang "%s" (#%d) from config'):format(name, gangId)) end
             Discord.Send('gang', 'Gang founded', ('%s (#%d) — seeded from config.lua'):format(def.label or name, gangId), Discord.Color.good)
         else
             gangId = row.id
-            MySQL.update('UPDATE cipher_gangs SET label = ?, owner = ? WHERE id = ?',
+            MySQL.update('UPDATE xs_gangs SET label = ?, owner = ? WHERE id = ?',
                 { def.label or name, def.boss or '', gangId })
         end
 
         if def.territory and Config.Territories[def.territory] then
-            MySQL.update('UPDATE cipher_territories SET gang_id = ? WHERE zone = ? AND gang_id IS NULL',
+            MySQL.update('UPDATE xs_territories SET gang_id = ? WHERE zone = ? AND gang_id IS NULL',
                 { gangId, def.territory })
         end
 
         -- make sure the boss has a member row at the top grade
         if def.boss and def.boss ~= '' then
-            local member = MySQL.single.await('SELECT citizenid FROM cipher_gang_members WHERE citizenid = ?', { def.boss })
-            local ranks = MySQL.query.await('SELECT grade FROM cipher_gang_ranks WHERE gang_id = ?', { gangId }) or {}
+            local member = MySQL.single.await('SELECT citizenid FROM xs_gang_members WHERE citizenid = ?', { def.boss })
+            local ranks = MySQL.query.await('SELECT grade FROM xs_gang_ranks WHERE gang_id = ?', { gangId }) or {}
             local grades = {}
             for _, r in ipairs(ranks) do grades[r.grade] = true end
             local top = topGradeOf(grades)
             if not member then
                 local bossName = Framework.GetNameByCitizenId(def.boss) or def.boss
                 MySQL.insert.await(
-                    'INSERT INTO cipher_gang_members (gang_id, citizenid, name, grade, dues_paid_at) VALUES (?, ?, ?, ?, ?)',
+                    'INSERT INTO xs_gang_members (gang_id, citizenid, name, grade, dues_paid_at) VALUES (?, ?, ?, ?, ?)',
                     { gangId, def.boss, bossName, top, now() })
             else
-                MySQL.update('UPDATE cipher_gang_members SET gang_id = ?, grade = ? WHERE citizenid = ?',
+                MySQL.update('UPDATE xs_gang_members SET gang_id = ?, grade = ? WHERE citizenid = ?',
                     { gangId, top, def.boss })
             end
         end
@@ -162,7 +162,7 @@ function Gangs.Invite(src, targetSrc)
     if Gangs.GetByCitizen(targetCid) then return false, 'target already in a gang' end
 
     pendingInvites[targetSrc] = { gangId = gang.id, from = Framework.GetName(src) }
-    TriggerClientEvent('cipher:client:gangInvite', targetSrc, { gang = gang.label, from = pendingInvites[targetSrc].from })
+    TriggerClientEvent('XS-CriminalTablet:client:gangInvite', targetSrc, { gang = gang.label, from = pendingInvites[targetSrc].from })
     return true
 end
 
@@ -175,7 +175,7 @@ function Gangs.AcceptInvite(src)
     if Gangs.GetByCitizen(cid) then return false, 'already in a gang' end
 
     MySQL.insert.await(
-        'INSERT INTO cipher_gang_members (gang_id, citizenid, name, grade, dues_paid_at) VALUES (?, ?, ?, 0, ?)',
+        'INSERT INTO xs_gang_members (gang_id, citizenid, name, grade, dues_paid_at) VALUES (?, ?, ?, 0, ?)',
         { invite.gangId, cid, Framework.GetName(src), now() })
 
     loadGang(invite.gangId) -- refresh cache
@@ -190,7 +190,7 @@ function Gangs.Kick(src, targetCid)
     if not gang or not gang.members[targetCid] then return false, 'not a member' end
     if gang.owner == targetCid then return false, 'cannot kick the boss' end
 
-    MySQL.update('DELETE FROM cipher_gang_members WHERE citizenid = ?', { targetCid })
+    MySQL.update('DELETE FROM xs_gang_members WHERE citizenid = ?', { targetCid })
     gang.members[targetCid] = nil
     Gangs.Log(gang.id, ('%s was removed'):format(targetCid))
     return true
@@ -203,7 +203,7 @@ function Gangs.SetGrade(src, targetCid, grade)
     if not gang.ranks[grade] then return false, 'invalid grade' end
     if gang.owner == targetCid then return false, 'cannot change the boss grade' end
 
-    MySQL.update('UPDATE cipher_gang_members SET grade = ? WHERE citizenid = ?', { grade, targetCid })
+    MySQL.update('UPDATE xs_gang_members SET grade = ? WHERE citizenid = ?', { grade, targetCid })
     gang.members[targetCid].grade = grade
     Gangs.Log(gang.id, ('%s set to %s'):format(targetCid, gang.ranks[grade].name))
     return true
@@ -219,7 +219,7 @@ function Gangs.AddMemberRep(citizenid, amount, reason)
     if not member then return false, 'not a member' end
 
     member.rep = math.max(0, (member.rep or 0) + amount)
-    MySQL.update('UPDATE cipher_gang_members SET rep = ? WHERE citizenid = ?', { member.rep, citizenid })
+    MySQL.update('UPDATE xs_gang_members SET rep = ? WHERE citizenid = ?', { member.rep, citizenid })
     Notoriety.Add(gang.id, amount, reason)
     return true
 end
@@ -246,7 +246,7 @@ function Gangs.Snapshot(src)
     if cid and gang.members[cid] then
         local nowMs = now()
         gang.members[cid].last_seen = nowMs
-        MySQL.update('UPDATE cipher_gang_members SET last_seen = ? WHERE citizenid = ?', { nowMs, cid })
+        MySQL.update('UPDATE xs_gang_members SET last_seen = ? WHERE citizenid = ?', { nowMs, cid })
     end
 
     local online = onlineCitizenIds()
@@ -269,7 +269,7 @@ function Gangs.Snapshot(src)
     end)
 
     local logs = MySQL.query.await(
-        'SELECT message, created_at FROM cipher_gang_logs WHERE gang_id = ? ORDER BY id DESC LIMIT 25',
+        'SELECT message, created_at FROM xs_gang_logs WHERE gang_id = ? ORDER BY id DESC LIMIT 25',
         { gang.id }) or {}
 
     local tierMin, nextTierMin = 0, nil

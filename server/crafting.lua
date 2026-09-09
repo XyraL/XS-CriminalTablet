@@ -81,11 +81,11 @@ function Crafting.Craft(src, recipeId)
     return true, bonus
 end
 
-lib.callback.register('cipher:crafting:getRecipes', function(src)
+lib.callback.register('XS-CriminalTablet:crafting:getRecipes', function(src)
     return Crafting.GetRecipes(src)
 end)
 
-lib.callback.register('cipher:crafting:craft', function(src, recipeId)
+lib.callback.register('XS-CriminalTablet:crafting:craft', function(src, recipeId)
     local ok, errOrBonus = Crafting.Craft(src, recipeId)
     return { ok = ok, error = not ok and errOrBonus or nil, bonus = ok and errOrBonus or nil }
 end)

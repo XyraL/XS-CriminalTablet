@@ -1,8 +1,8 @@
 // ─────────────────────────────────────────────────────────────
-// Cipher NUI controller. Talks to client/device.lua via fetch callbacks.
+// XS-CriminalTablet NUI controller. Talks to client/device.lua via fetch callbacks.
 // All gang logic lives server-side; this only renders + relays actions.
 // ─────────────────────────────────────────────────────────────
-const RES = 'cipher';
+const RES = typeof GetParentResourceName === 'function' ? GetParentResourceName() : 'XS-CriminalTablet';
 const $ = (s) => document.querySelector(s);
 const el = (s) => document.querySelectorAll(s);
 
@@ -31,6 +31,8 @@ window.addEventListener('message', (ev) => {
     if (action === 'open') openUI(data);
     else if (action === 'close') closeUI();
     else if (action === 'openAdmin' && window.openAdminUI) window.openAdminUI();
+    else if (action === 'invite') showInvite(data);
+    else if (action === 'refresh') refreshActiveApp();
     else if (action === 'chatWorldMessage') onWorldMessage(data);
     else if (action === 'chatDM') onDMReceived(data);
 });
@@ -84,6 +86,41 @@ function openUI(snapshot) {
 function closeUI() {
     $('#root').classList.add('hidden');
     $('#adminRoot').classList.add('hidden');
+    hideInvite();
+}
+
+// ── incoming invites (banner inside the device) ──
+let inviteTimer = null;
+function showInvite(inv) {
+    const b = $('#inviteBanner');
+    if (!b || !inv) return;
+    $('#inviteTitle').textContent = inv.title || 'Invite';
+    $('#inviteBody').textContent = `${inv.from || 'Someone'} ${inv.detail || 'sent you an invite'}.`;
+    b.classList.remove('hidden');
+    clearTimeout(inviteTimer);
+    inviteTimer = setTimeout(() => respondInvite(false), 45000);
+}
+function hideInvite() {
+    clearTimeout(inviteTimer);
+    const b = $('#inviteBanner');
+    if (b) b.classList.add('hidden');
+}
+function respondInvite(accept) {
+    const b = $('#inviteBanner');
+    if (!b || b.classList.contains('hidden')) return;
+    hideInvite();
+    nui('inviteRespond', { accept });
+}
+$('#inviteAccept').onclick = () => respondInvite(true);
+$('#inviteDecline').onclick = () => respondInvite(false);
+
+// Server-pushed refresh (someone joined your crew, etc.) — re-render the
+// app that's showing without resetting which tab is active.
+async function refreshActiveApp() {
+    if ($('#root').classList.contains('hidden')) return;
+    if (state.activeApp === 'boosting') await renderBoosting();
+    else if (state.activeApp === 'blackmarket') return;
+    else await refresh();
 }
 
 $('#powerBtn').onclick = () => nui('close');
@@ -276,8 +313,8 @@ function renderRoster(g) {
         btn.onclick = async (e) => {
             e.stopPropagation();
             const { act, cid, grade } = btn.dataset;
-            if (act === 'kick') await call('cipher:kick', cid);
-            else await call('cipher:setGrade', cid, Number(grade));
+            if (act === 'kick') await call('XS-CriminalTablet:kick', cid);
+            else await call('XS-CriminalTablet:setGrade', cid, Number(grade));
             await refresh();
         };
     });
@@ -302,11 +339,66 @@ function renderTopContributors(g) {
     });
 }
 
+// ── player search (shared by every invite box) ──
+function attachPlayerSearch(input) {
+    const wrap = input.closest('.player-search');
+    const results = wrap ? wrap.querySelector('.player-search-results') : null;
+    const ps = { picked: null, matches: [] };
+    let timer = null;
+    let seq = 0;
+
+    const hide = () => { if (results) { results.classList.add('hidden'); results.innerHTML = ''; } };
+    const show = (list) => {
+        if (!results) return;
+        results.innerHTML = '';
+        if (!list.length) {
+            results.innerHTML = '<div class="player-search-empty">No one online matches</div>';
+        } else {
+            list.forEach((p) => {
+                const row = document.createElement('div');
+                row.className = 'player-search-row';
+                row.innerHTML = `<span class="player-search-name">${escapeHtml(p.name)}</span><span class="player-search-id">ID ${p.id}</span>`;
+                row.onmousedown = (e) => {
+                    e.preventDefault();
+                    ps.picked = p;
+                    input.value = `${p.name} [${p.id}]`;
+                    hide();
+                };
+                results.appendChild(row);
+            });
+        }
+        results.classList.remove('hidden');
+    };
+    const search = async () => {
+        const mine = ++seq;
+        const list = await call('XS-CriminalTablet:players:search', input.value.trim());
+        if (mine !== seq) return;
+        ps.matches = Array.isArray(list) ? list : [];
+        if (document.activeElement === input) show(ps.matches);
+    };
+
+    input.oninput = () => { ps.picked = null; clearTimeout(timer); timer = setTimeout(search, 180); };
+    input.onfocus = () => { if (!ps.picked) search(); };
+    input.onblur = () => setTimeout(hide, 120);
+    input.onkeydown = (e) => { if (e.key === 'Escape') { hide(); input.blur(); } };
+
+    ps.target = () => {
+        if (ps.picked) return ps.picked.id;
+        const q = input.value.trim();
+        if (/^\d+$/.test(q)) return Number(q);
+        if (ps.matches.length === 1) return ps.matches[0].id;
+        return null;
+    };
+    ps.reset = () => { ps.picked = null; ps.matches = []; input.value = ''; hide(); };
+    return ps;
+}
+
+const invitePS = attachPlayerSearch($('#inviteId'));
 $('#inviteBtn').onclick = async () => {
-    const id = $('#inviteId').value;
-    if (!id) return;
-    const res = await call('cipher:invite', Number(id));
-    $('#inviteId').value = '';
+    const id = invitePS.target();
+    if (!id) { flash('Pick a player from the list', 'error'); return; }
+    const res = await call('XS-CriminalTablet:invite', id);
+    invitePS.reset();
     if (res.ok) flash('Invite sent', 'success');
     else flash(res.error || 'Failed', 'error');
 };
@@ -325,6 +417,22 @@ const TMAP = {
 
 let _tmap = null;
 let _tmapZones = null;
+let _tmapBounds = null;
+let _tmapFitted = false;
+
+// Leaflet measures its container once at construction. The territory tab
+// is display:none when the device opens, so the map starts at 0x0 and has
+// to be re-measured (and fitted for the first time) once it's visible.
+function tmapRefit() {
+    if (!_tmap) return;
+    const c = _tmap.getContainer();
+    if (!c.clientWidth || !c.clientHeight) return;
+    _tmap.invalidateSize({ animate: false });
+    if (!_tmapFitted) {
+        _tmap.fitBounds(_tmapBounds, { animate: false });
+        _tmapFitted = true;
+    }
+}
 
 function tmapLatLng(wx, wy) {
     const W = TMAP.world;
@@ -340,7 +448,7 @@ function ensureTerritoryMap() {
 
     _tmap = L.map(el, {
         crs: L.CRS.Simple,
-        minZoom: 1, maxZoom: TMAP.maxZoom,
+        minZoom: 0, maxZoom: TMAP.maxZoom,
         zoomControl: true, attributionControl: false,
         zoomSnap: 0.25, wheelPxPerZoomLevel: 90,
     });
@@ -354,11 +462,13 @@ function ensureTerritoryMap() {
         maxNativeZoom: TMAP.nativeZoom, noWrap: true, bounds,
     }).addTo(_tmap);
 
+    _tmapBounds = bounds;
+    _tmap.setView(bounds.getCenter(), 1, { animate: false });
     _tmap.setMaxBounds(bounds.pad(0.1));
-    _tmap.fitBounds(bounds);
     _tmapZones = L.layerGroup().addTo(_tmap);
 
-    setTimeout(() => _tmap && _tmap.invalidateSize(), 60);
+    tmapRefit();
+    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(tmapRefit).observe(el);
     return true;
 }
 
@@ -430,8 +540,8 @@ function renderBank(g) {
     renderLedger();
 }
 
-$('#depositBtn').onclick = () => bankAction('cipher:bankDeposit');
-$('#withdrawBtn').onclick = () => bankAction('cipher:bankWithdraw');
+$('#depositBtn').onclick = () => bankAction('XS-CriminalTablet:bankDeposit');
+$('#withdrawBtn').onclick = () => bankAction('XS-CriminalTablet:bankWithdraw');
 async function bankAction(name) {
     const amt = Number($('#bankAmount').value);
     if (!amt || amt <= 0) return;
@@ -445,7 +555,7 @@ async function bankAction(name) {
 }
 
 async function renderLedger() {
-    const rows = await call('cipher:bankGetLedger');
+    const rows = await call('XS-CriminalTablet:bankGetLedger');
     const list = $('#bankLedger');
     if (!list) return;
     list.innerHTML = '';
@@ -480,7 +590,7 @@ function renderLogs(logs) { renderLogList($('#logList'), logs); }
 
 // ── unlocks (benches/peds/vault placement) ──
 async function renderUnlocks() {
-    const items = await call('cipher:placeables:getAvailable');
+    const items = await call('XS-CriminalTablet:placeables:getAvailable');
     const list = $('#unlockList');
     list.innerHTML = '';
     if (!Array.isArray(items) || !items.length) {
@@ -508,7 +618,7 @@ async function renderUnlocks() {
     });
     list.querySelectorAll('[data-remove-kind]').forEach((btn) => {
         btn.onclick = async () => {
-            const res = await call('cipher:placeables:remove', btn.dataset.removeKind, btn.dataset.removeId);
+            const res = await call('XS-CriminalTablet:placeables:remove', btn.dataset.removeKind, btn.dataset.removeId);
             if (res.ok) flash('Removed', 'success'); else flash(res.error || 'Failed', 'error');
             await renderUnlocks();
         };
@@ -525,7 +635,7 @@ function taskRewardLabel(t) {
 }
 
 async function renderTaskList(listEl, cancelBtnEl, typeFilter) {
-    const res = await call('cipher:tasks:getAvailable');
+    const res = await call('XS-CriminalTablet:tasks:getAvailable');
     const allTasks = (res && res.tasks) || [];
     const tasks = allTasks.filter((t) => typeFilter(t.type));
     const activeJob = res && res.active;
@@ -567,7 +677,7 @@ async function renderTaskList(listEl, cancelBtnEl, typeFilter) {
 
     listEl.querySelectorAll('[data-task]').forEach((btn) => {
         btn.onclick = async () => {
-            const res = await call('cipher:tasks:accept', btn.dataset.task);
+            const res = await call('XS-CriminalTablet:tasks:accept', btn.dataset.task);
             if (res.ok) { flash('Job accepted — check your map.', 'success'); nui('close'); }
             else flash(res.error || 'Failed', 'error');
             await renderTaskList(listEl, cancelBtnEl, typeFilter);
@@ -576,7 +686,7 @@ async function renderTaskList(listEl, cancelBtnEl, typeFilter) {
 }
 
 async function renderTasks() {
-    const status = await call('cipher:tasks:getStatus');
+    const status = await call('XS-CriminalTablet:tasks:getStatus');
     if (status) {
         $('#taskRankNum').textContent = status.level;
         $('#taskRankTitle').textContent = status.title;
@@ -595,13 +705,13 @@ async function renderTasks() {
     await renderTaskCrew(status);
 }
 $('#cancelTaskBtn').onclick = async () => {
-    await call('cipher:tasks:cancel');
+    await call('XS-CriminalTablet:tasks:cancel');
     await renderTasks();
 };
 
 // ── task co-op crew ──
 async function renderTaskCrew(status) {
-    const crew = await call('cipher:tasks:getCrewStatus');
+    const crew = await call('XS-CriminalTablet:tasks:getCrewStatus');
     const list = $('#taskCrewList');
     const cancelBtn = $('#taskCancelCrewBtn');
     const inviteBtn = $('#taskInviteBtn');
@@ -612,7 +722,7 @@ async function renderTaskCrew(status) {
 
     const busy = !!(status && status.active);
 
-    if (!crew) {
+    if (!crew || !crew.size) {
         list.innerHTML = '<div class="log-empty">No crew yet — invite someone to start a co-op job.</div>';
         cancelBtn.classList.add('hidden');
         inviteBtn.disabled = busy;
@@ -630,7 +740,7 @@ async function renderTaskCrew(status) {
         cancelBtn.classList.remove('hidden');
         inviteBtn.disabled = crew.size >= crew.maxSize || busy;
         if (crew.size >= 2 && !busy) {
-            const coopTasks = (await call('cipher:tasks:getCoopTasks')) || [];
+            const coopTasks = (await call('XS-CriminalTablet:tasks:getCoopTasks')) || [];
             picker.classList.remove('hidden');
             picker.innerHTML = '<div class="log-empty" style="text-align:left;padding:4px 0;">Pick a job to run together:</div>';
             coopTasks.forEach((t) => {
@@ -644,7 +754,7 @@ async function renderTaskCrew(status) {
             });
             picker.querySelectorAll('[data-coop-task]').forEach((btn) => {
                 btn.onclick = async () => {
-                    const res = await call('cipher:tasks:acceptCoop', btn.dataset.coopTask);
+                    const res = await call('XS-CriminalTablet:tasks:acceptCoop', btn.dataset.coopTask);
                     if (res.ok) { flash('Crew job started — check your map.', 'success'); nui('close'); }
                     else flash(res.error || 'Failed', 'error');
                     await renderTasks();
@@ -657,24 +767,25 @@ async function renderTaskCrew(status) {
     }
 }
 
+const taskInvitePS = attachPlayerSearch($('#taskInviteId'));
 $('#taskInviteBtn').onclick = async () => {
-    const id = $('#taskInviteId').value;
-    if (!id) return;
-    const res = await call('cipher:tasks:inviteCoop', Number(id));
-    $('#taskInviteId').value = '';
+    const id = taskInvitePS.target();
+    if (!id) { flash('Pick a player from the list', 'error'); return; }
+    const res = await call('XS-CriminalTablet:tasks:inviteCoop', id);
+    taskInvitePS.reset();
     if (res.ok) flash('Invite sent', 'success');
     else flash(res.error || 'Failed', 'error');
     await renderTasks();
 };
 $('#taskCancelCrewBtn').onclick = async () => {
-    await call('cipher:tasks:cancelCrew');
+    await call('XS-CriminalTablet:tasks:cancelCrew');
     await renderTasks();
 };
 
 // ── task badges + leaderboard ──
 async function renderTaskBadges() {
     const list = $('#taskBadgeList');
-    const achievements = (await call('cipher:tasks:getAchievements')) || [];
+    const achievements = (await call('XS-CriminalTablet:tasks:getAchievements')) || [];
     list.innerHTML = '';
     if (!achievements.length) { list.innerHTML = '<div class="log-empty">No badges configured.</div>'; return; }
     achievements.forEach((a) => {
@@ -689,7 +800,7 @@ async function renderTaskBadges() {
 
 async function renderTaskLeaderboard() {
     const list = $('#taskLeaderboard');
-    const rows = (await call('cipher:tasks:getLeaderboard')) || [];
+    const rows = (await call('XS-CriminalTablet:tasks:getLeaderboard')) || [];
     list.innerHTML = '';
     if (!rows.length) { list.innerHTML = '<div class="log-empty">No completed jobs yet.</div>'; return; }
     rows.forEach((r, i) => {
@@ -705,7 +816,7 @@ async function renderTaskLeaderboard() {
 
 // ── Car boosting (fully standalone — no gang tie-in) ──
 async function renderBoosting() {
-    const status = await call('cipher:boosting:getStatus');
+    const status = await call('XS-CriminalTablet:boosting:getStatus');
     if (!status) return;
 
     $('#boostLevelNum').textContent = status.level;
@@ -761,14 +872,14 @@ async function renderBoosting() {
 }
 
 async function renderBoostCrew(status) {
-    const crew = await call('cipher:boosting:getCrewStatus');
+    const crew = await call('XS-CriminalTablet:boosting:getCrewStatus');
     const list = $('#boostCrewList');
     const startBtn = $('#boostStartCoopBtn');
     const cancelBtn = $('#boostCancelCrewBtn');
     const inviteBtn = $('#boostInviteBtn');
     list.innerHTML = '';
 
-    if (!crew) {
+    if (!crew || !crew.size) {
         list.innerHTML = '<div class="log-empty">No crew yet — invite someone to start a co-op job.</div>';
         startBtn.classList.add('hidden');
         cancelBtn.classList.add('hidden');
@@ -794,28 +905,29 @@ async function renderBoostCrew(status) {
     }
 }
 
+const boostInvitePS = attachPlayerSearch($('#boostInviteId'));
 $('#boostInviteBtn').onclick = async () => {
-    const id = $('#boostInviteId').value;
-    if (!id) return;
-    const res = await call('cipher:boosting:inviteCoop', Number(id));
-    $('#boostInviteId').value = '';
+    const id = boostInvitePS.target();
+    if (!id) { flash('Pick a player from the list', 'error'); return; }
+    const res = await call('XS-CriminalTablet:boosting:inviteCoop', id);
+    boostInvitePS.reset();
     if (res.ok) flash('Invite sent', 'success');
     else flash(res.error || 'Failed', 'error');
     await renderBoosting();
 };
 $('#boostCancelCrewBtn').onclick = async () => {
-    await call('cipher:boosting:cancelCrew');
+    await call('XS-CriminalTablet:boosting:cancelCrew');
     await renderBoosting();
 };
 $('#boostStartCoopBtn').onclick = async () => {
-    const res = await call('cipher:boosting:acceptCoop');
+    const res = await call('XS-CriminalTablet:boosting:acceptCoop');
     if (res.ok) { flash('Co-op job started — check your map.', 'success'); nui('close'); }
     else flash(res.error || 'Failed', 'error');
     await renderBoosting();
 };
 
 async function renderBoostPerks() {
-    const res = await call('cipher:boosting:getPerks');
+    const res = await call('XS-CriminalTablet:boosting:getPerks');
     const perks = (res && res.perks) || [];
     $('#boostPerkPoints').textContent = (res && res.perkPoints) || 0;
     const list = $('#boostPerkList');
@@ -837,7 +949,7 @@ async function renderBoostPerks() {
 
     list.querySelectorAll('[data-perk]').forEach((btn) => {
         btn.onclick = async () => {
-            const res2 = await call('cipher:boosting:buyPerk', btn.dataset.perk);
+            const res2 = await call('XS-CriminalTablet:boosting:buyPerk', btn.dataset.perk);
             if (res2.ok) flash('Perk bought', 'success');
             else flash(res2.error || 'Failed', 'error');
             await renderBoostPerks();
@@ -846,7 +958,7 @@ async function renderBoostPerks() {
 }
 
 async function renderBoostWanted(status) {
-    const wanted = await call('cipher:boosting:getWanted');
+    const wanted = await call('XS-CriminalTablet:boosting:getWanted');
     const section = $('#boostWantedSection');
     const list = $('#boostWantedList');
     list.innerHTML = '';
@@ -869,7 +981,7 @@ async function renderBoostWanted(status) {
 
     list.querySelectorAll('[data-wanted]').forEach((btn) => {
         btn.onclick = async () => {
-            const res = await call('cipher:boosting:accept', btn.dataset.wanted);
+            const res = await call('XS-CriminalTablet:boosting:accept', btn.dataset.wanted);
             if (res.ok) { flash('Job started — check your map.', 'success'); nui('close'); }
             else flash(res.error || 'Failed', 'error');
             await renderBoosting();
@@ -878,7 +990,7 @@ async function renderBoostWanted(status) {
 }
 
 async function renderBoostBadges() {
-    const badges = await call('cipher:boosting:getAchievements');
+    const badges = await call('XS-CriminalTablet:boosting:getAchievements');
     const list = $('#boostBadgeList');
     list.innerHTML = '';
     if (!badges || !badges.length) { list.innerHTML = '<div class="log-empty">No badges configured.</div>'; return; }
@@ -893,7 +1005,7 @@ async function renderBoostBadges() {
 }
 
 async function renderBoostVehiclePreview() {
-    const vehicles = await call('cipher:boosting:getAvailableVehicles');
+    const vehicles = await call('XS-CriminalTablet:boosting:getAvailableVehicles');
     const list = $('#boostVehiclePreview');
     list.innerHTML = '';
     if (!vehicles || !vehicles.length) { list.innerHTML = '<div class="log-empty">Nothing unlocked yet.</div>'; return; }
@@ -908,7 +1020,7 @@ async function renderBoostVehiclePreview() {
 }
 
 async function renderBoostActivity() {
-    const rows = await call('cipher:boosting:getRecentActivity');
+    const rows = await call('XS-CriminalTablet:boosting:getRecentActivity');
     const list = $('#boostActivityFeed');
     list.innerHTML = '';
     if (!rows || !rows.length) { list.innerHTML = '<div class="log-empty">No sells yet.</div>'; return; }
@@ -921,18 +1033,18 @@ async function renderBoostActivity() {
 }
 
 $('#boostActionBtn').onclick = async () => {
-    const res = await call('cipher:boosting:accept');
+    const res = await call('XS-CriminalTablet:boosting:accept');
     if (res.ok) { flash('Job started — check your map.', 'success'); nui('close'); }
     else flash(res.error || 'Failed', 'error');
     await renderBoosting();
 };
 $('#cancelBoostBtn').onclick = async () => {
-    await call('cipher:boosting:cancel');
+    await call('XS-CriminalTablet:boosting:cancel');
     await renderBoosting();
 };
 
 async function renderBoostLeaderboard() {
-    const rows = await call('cipher:boosting:getLeaderboard');
+    const rows = await call('XS-CriminalTablet:boosting:getLeaderboard');
     const list = $('#boostLeaderboard');
     list.innerHTML = '';
     if (!rows || !rows.length) { list.innerHTML = '<div class="log-empty">No one\'s boosted anything yet.</div>'; return; }
@@ -951,7 +1063,7 @@ async function renderBoostLeaderboard() {
 
 // ── dealer ──
 async function renderDealer() {
-    const status = await call('cipher:dealer:getStatus');
+    const status = await call('XS-CriminalTablet:dealer:getStatus');
     const btn = $('#callDealerBtn');
     if (status && status.cooldownMs > 0) {
         const hrs = (status.cooldownMs / 3600000).toFixed(1);
@@ -963,7 +1075,7 @@ async function renderDealer() {
     }
 }
 $('#callDealerBtn').onclick = async () => {
-    const res = await call('cipher:dealer:contact');
+    const res = await call('XS-CriminalTablet:dealer:contact');
     if (res.ok) { flash('Dealer is en route — check your map.', 'success'); nui('close'); }
     else flash(res.error || 'Failed', 'error');
     await renderDealer();
@@ -971,7 +1083,7 @@ $('#callDealerBtn').onclick = async () => {
 
 // ── gang perks: a real branching tree, not a flat list ──
 async function renderGangPerks() {
-    const res = await call('cipher:gangperks:getTree');
+    const res = await call('XS-CriminalTablet:gangperks:getTree');
     const branches = (res && res.branches) || [];
     const points = (res && res.perkPoints) || 0;
     $('#gangPerkPoints').textContent = points;
@@ -1015,7 +1127,7 @@ async function renderGangPerks() {
 
     wrap.querySelectorAll('[data-buy-perk]').forEach((btn) => {
         btn.onclick = async () => {
-            const res = await call('cipher:gangperks:buyPerk', btn.dataset.buyPerk);
+            const res = await call('XS-CriminalTablet:gangperks:buyPerk', btn.dataset.buyPerk);
             if (res.ok) flash('Perk purchased', 'success'); else flash(res.error || 'Failed', 'error');
             await renderGangPerks();
         };
@@ -1033,6 +1145,7 @@ el('.tab').forEach((tab) => {
         const targetView = scope.querySelector(`[data-tabview="${tab.dataset.tab}"]`);
         targetView.classList.add('is-active');
         playGlitch(targetView);
+        if (targetView.querySelector('#territoryMap')) tmapRefit();
         const moreParent = tab.closest('.tab-more');
         if (moreParent) moreParent.classList.add('has-active');
     };
@@ -1057,7 +1170,7 @@ document.addEventListener('click', () => {
 
 // ── helpers ──
 async function refresh() {
-    const snap = await call('cipher:getSnapshot');
+    const snap = await call('XS-CriminalTablet:getSnapshot');
     // getSnapshot returns the snapshot object directly (not wrapped)
     state.snapshot = snap.gang !== undefined ? snap : state.snapshot;
     render();
@@ -1089,7 +1202,7 @@ let dmActiveHandle = null;
 async function renderBlackmarket() {
     if (!blackmarketLoaded) {
         blackmarketLoaded = true;
-        const handle = await call('cipher:chat:getMyHandle');
+        const handle = await call('XS-CriminalTablet:chat:getMyHandle');
         $('#myHandle').textContent = handle || '—';
     }
     await renderWorldFeed();
@@ -1104,7 +1217,7 @@ $('#cancelHandleBtn').onclick = () => $('#handleEditRow').classList.add('hidden'
 $('#saveHandleBtn').onclick = async () => {
     const desired = $('#handleInput').value.trim();
     if (!desired) return;
-    const res = await call('cipher:chat:setHandle', desired);
+    const res = await call('XS-CriminalTablet:chat:setHandle', desired);
     if (res.ok) {
         $('#myHandle').textContent = res.handle;
         $('#handleEditRow').classList.add('hidden');
@@ -1124,7 +1237,7 @@ function appendChatBubble(container, handle, message, mine) {
 }
 
 async function renderWorldFeed() {
-    const history = await call('cipher:chat:getWorldHistory');
+    const history = await call('XS-CriminalTablet:chat:getWorldHistory');
     const feed = $('#worldFeed');
     feed.innerHTML = '';
     const myHandle = $('#myHandle').textContent;
@@ -1143,13 +1256,13 @@ $('#worldSendBtn').onclick = async () => {
     const msg = input.value.trim();
     if (!msg) return;
     input.value = '';
-    const res = await call('cipher:chat:postWorld', msg);
+    const res = await call('XS-CriminalTablet:chat:postWorld', msg);
     if (!res.ok) flash(res.error || 'Failed to post', 'error');
 };
 $('#worldInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#worldSendBtn').click(); });
 
 async function renderDMThreads() {
-    const threads = await call('cipher:chat:getThreads');
+    const threads = await call('XS-CriminalTablet:chat:getThreads');
     const list = $('#dmThreadList');
     list.innerHTML = '';
     if (!threads || !threads.length) {
@@ -1176,7 +1289,7 @@ async function openDMThread(handle) {
     const feed = $('#dmFeed');
     feed.innerHTML = '';
     const myHandle = $('#myHandle').textContent;
-    const messages = await call('cipher:chat:getThread', handle);
+    const messages = await call('XS-CriminalTablet:chat:getThread', handle);
     (messages || []).forEach((m) => appendChatBubble(feed, m.from_handle, m.message, m.from_handle === myHandle));
     if (!messages || !messages.length) feed.innerHTML = '<div class="log-empty">No messages yet — say hi.</div>';
 }
@@ -1189,7 +1302,7 @@ $('#dmSendBtn').onclick = async () => {
     const msg = input.value.trim();
     if (!msg) return;
     input.value = '';
-    const res = await call('cipher:chat:sendDM', dmActiveHandle, msg);
+    const res = await call('XS-CriminalTablet:chat:sendDM', dmActiveHandle, msg);
     if (res.ok) {
         const myHandle = $('#myHandle').textContent;
         appendChatBubble($('#dmFeed'), myHandle, msg, true);

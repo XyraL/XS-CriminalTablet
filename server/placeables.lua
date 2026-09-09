@@ -15,7 +15,7 @@ local byGangKind = {}
 local function key(kind, unlockId) return kind .. ':' .. unlockId end
 
 local function loadAll()
-    rows = MySQL.query.await('SELECT * FROM cipher_gang_placements') or {}
+    rows = MySQL.query.await('SELECT * FROM xs_gang_placements') or {}
     byGangKind = {}
     for _, r in ipairs(rows) do
         byGangKind[r.gang_id] = byGangKind[r.gang_id] or {}
@@ -33,9 +33,9 @@ end
 -- everything in the new spot rather than them silently relocating.
 function Placeables.ClearForGang(gangId)
     if not gangId then return end
-    MySQL.update('DELETE FROM cipher_gang_placements WHERE gang_id = ?', { gangId })
+    MySQL.update('DELETE FROM xs_gang_placements WHERE gang_id = ?', { gangId })
     loadAll()
-    TriggerClientEvent('cipher:client:placeablesUpdate', -1, Placeables.GetAll())
+    TriggerClientEvent('XS-CriminalTablet:client:placeablesUpdate', -1, Placeables.GetAll())
 end
 
 local function tierIndex(tierName)
@@ -89,14 +89,14 @@ function Placeables.Place(src, kind, unlockId, coords, heading)
 
     local cid = Framework.GetCitizenId(src)
     MySQL.insert.await(
-        'INSERT INTO cipher_gang_placements (gang_id, kind, unlock_id, model, label, x, y, z, heading, placed_by) ' ..
+        'INSERT INTO xs_gang_placements (gang_id, kind, unlock_id, model, label, x, y, z, heading, placed_by) ' ..
         'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ' ..
         'ON DUPLICATE KEY UPDATE model = ?, label = ?, x = ?, y = ?, z = ?, heading = ?, placed_by = ?',
         { gang.id, kind, unlockId, model, label, coords.x, coords.y, coords.z, heading, cid,
           model, label, coords.x, coords.y, coords.z, heading, cid })
 
     loadAll()
-    TriggerClientEvent('cipher:client:placeablesUpdate', -1, Placeables.GetAll())
+    TriggerClientEvent('XS-CriminalTablet:client:placeablesUpdate', -1, Placeables.GetAll())
     Gangs.Log(gang.id, ('%s placed %s'):format(Framework.GetName(src) or cid, label))
     return true
 end
@@ -106,10 +106,10 @@ function Placeables.Remove(src, kind, unlockId)
     local gang = Gangs.GetBySource(src)
     if not gang then return false, 'no gang' end
 
-    MySQL.update('DELETE FROM cipher_gang_placements WHERE gang_id = ? AND kind = ? AND unlock_id = ?',
+    MySQL.update('DELETE FROM xs_gang_placements WHERE gang_id = ? AND kind = ? AND unlock_id = ?',
         { gang.id, kind, unlockId })
     loadAll()
-    TriggerClientEvent('cipher:client:placeablesUpdate', -1, Placeables.GetAll())
+    TriggerClientEvent('XS-CriminalTablet:client:placeablesUpdate', -1, Placeables.GetAll())
     Gangs.Log(gang.id, ('%s removed a placement'):format(Framework.GetName(src) or ''))
     return true
 end
@@ -151,20 +151,20 @@ CreateThread(function()
     loadAll()
 end)
 
-lib.callback.register('cipher:placeables:getAll', function()
+lib.callback.register('XS-CriminalTablet:placeables:getAll', function()
     return Placeables.GetAll()
 end)
 
-lib.callback.register('cipher:placeables:getAvailable', function(src)
+lib.callback.register('XS-CriminalTablet:placeables:getAvailable', function(src)
     return Placeables.GetAvailable(src)
 end)
 
-lib.callback.register('cipher:placeables:place', function(src, kind, unlockId, coords, heading)
+lib.callback.register('XS-CriminalTablet:placeables:place', function(src, kind, unlockId, coords, heading)
     local ok, err = Placeables.Place(src, kind, unlockId, coords, tonumber(heading) or 0.0)
     return { ok = ok, error = err }
 end)
 
-lib.callback.register('cipher:placeables:remove', function(src, kind, unlockId)
+lib.callback.register('XS-CriminalTablet:placeables:remove', function(src, kind, unlockId)
     local ok, err = Placeables.Remove(src, kind, unlockId)
     return { ok = ok, error = err }
 end)
@@ -172,6 +172,6 @@ end)
 -- Triggered by the client's vault proximity prompt — already physically
 -- near the placed container, so no permission re-check needed beyond
 -- what Vault.Open already does.
-RegisterNetEvent('cipher:server:openVault', function()
+RegisterNetEvent('XS-CriminalTablet:server:openVault', function()
     Vault.Open(source)
 end)

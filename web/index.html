@@ -6,7 +6,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
     <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
     <link rel="stylesheet" href="style.css" />
-    <title>cipher</title>
+    <title>XS-CriminalTablet</title>
 </head>
 <body>
     <div id="root" class="hidden">
@@ -77,7 +77,10 @@
                         <h2 class="boost-section-heading">Co-op crew <span class="wanted-flag">HARDER</span></h2>
                         <div id="boostCrewList" class="member-list"></div>
                         <div class="admin-form">
-                            <input id="boostInviteId" type="number" placeholder="player ID to invite" />
+                            <div class="player-search">
+                                <input id="boostInviteId" type="text" autocomplete="off" placeholder="player name or ID" />
+                                <div class="player-search-results hidden"></div>
+                            </div>
                             <button id="boostInviteBtn" class="btn btn-ghost">Invite</button>
                             <button id="boostStartCoopBtn" class="btn btn-accent hidden">Start Co-op Job</button>
                             <button id="boostCancelCrewBtn" class="btn btn-ghost hidden">Disband crew</button>
@@ -199,7 +202,10 @@
                         <div class="row-between">
                             <h2>Roster <span id="memberCount" class="count">0</span></h2>
                             <div class="invite-box">
-                                <input id="inviteId" type="number" placeholder="player ID" />
+                                <div class="player-search">
+                                    <input id="inviteId" type="text" autocomplete="off" placeholder="player name or ID" />
+                                    <div class="player-search-results hidden"></div>
+                                </div>
                                 <button id="inviteBtn" class="btn btn-ghost">Invite</button>
                             </div>
                         </div>
@@ -239,7 +245,10 @@
                         <h2 class="boost-section-heading">Co-op crew <span class="wanted-flag">HARDER</span></h2>
                         <div id="taskCrewList" class="member-list"></div>
                         <div class="admin-form">
-                            <input id="taskInviteId" type="number" placeholder="player ID to invite" />
+                            <div class="player-search">
+                                <input id="taskInviteId" type="text" autocomplete="off" placeholder="player name or ID" />
+                                <div class="player-search-results hidden"></div>
+                            </div>
                             <button id="taskInviteBtn" class="btn btn-ghost">Invite</button>
                         </div>
                         <div id="taskCoopPicker" class="member-list hidden"></div>
@@ -291,7 +300,7 @@
                         <div class="bankcard">
                             <div class="bankcard-top">
                                 <span class="muted">CREW TREASURY</span>
-                                <span class="bankcard-chip">●●●● CIPHER</span>
+                                <span class="bankcard-chip">●●●● XYRAL</span>
                             </div>
                             <div id="bankBalance" class="bank-balance">$0</div>
                             <div class="treasury-rep">
@@ -377,6 +386,16 @@
                 </section>
             </main>
             <div id="toastStack" class="toast-stack"></div>
+            <div id="inviteBanner" class="invite-banner hidden">
+                <div class="invite-banner-text">
+                    <span id="inviteTitle" class="invite-banner-title"></span>
+                    <span id="inviteBody" class="invite-banner-body"></span>
+                </div>
+                <div class="invite-banner-actions">
+                    <button id="inviteAccept" class="btn btn-accent">Accept</button>
+                    <button id="inviteDecline" class="btn btn-ghost">Decline</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -393,7 +412,7 @@
 
             <header class="statusbar">
                 <div class="status-left">
-                    <span class="gang-name">Cipher — Admin Tablet</span>
+                    <span class="gang-name">XyraL — Admin Tablet</span>
                 </div>
                 <div class="status-right">
                     <span class="signal admin-signal">STAFF ACCESS</span>

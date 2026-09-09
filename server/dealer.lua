@@ -34,7 +34,7 @@ local function rollStock()
         }
     end
 
-    if Config.Debug then print(('^3[cipher]^0 dealer stock rolled (%d items)'):format(#stock)) end
+    if Config.Debug then print(('^3[XS-CriminalTablet]^0 dealer stock rolled (%d items)'):format(#stock)) end
 end
 
 function Dealer.GetStock()
@@ -56,7 +56,7 @@ function Dealer.Buy(src, item)
     if not entry then return false, 'not in stock' end
 
     if Framework.GetMoney(src, Config.Dealer.account) < entry.price then return false, 'not enough funds' end
-    Framework.RemoveMoney(src, Config.Dealer.account, entry.price, 'cipher-dealer')
+    Framework.RemoveMoney(src, Config.Dealer.account, entry.price, 'xs-dealer')
     exports.ox_inventory:AddItem(src, entry.item, 1)
 
     local cid = Framework.GetCitizenId(src)
@@ -72,7 +72,7 @@ end
 -- ── contact / spawn lifecycle ──
 local function despawn()
     activeSpawn = nil
-    TriggerClientEvent('cipher:client:dealerDespawn', -1)
+    TriggerClientEvent('XS-CriminalTablet:client:dealerDespawn', -1)
 end
 
 function Dealer.GetStatus()
@@ -99,7 +99,7 @@ function Dealer.Contact(src)
         Gangs.Log(gang.id, ('%s called the dealer'):format(Framework.GetName(src) or cid))
     end
 
-    TriggerClientEvent('cipher:client:dealerSpawn', -1, coords, Config.Dealer.pedModel)
+    TriggerClientEvent('XS-CriminalTablet:client:dealerSpawn', -1, coords, Config.Dealer.pedModel)
     SetTimeout(Config.Dealer.timeoutMinutes * 60 * 1000, function()
         if activeSpawn and activeSpawn.expiresAt <= os.time() * 1000 then despawn() end
     end)
@@ -114,20 +114,20 @@ CreateThread(function()
     end
 end)
 
-lib.callback.register('cipher:dealer:getStock', function()
+lib.callback.register('XS-CriminalTablet:dealer:getStock', function()
     return Dealer.GetStock()
 end)
 
-lib.callback.register('cipher:dealer:buy', function(src, item)
+lib.callback.register('XS-CriminalTablet:dealer:buy', function(src, item)
     local ok, res = Dealer.Buy(src, item)
     return { ok = ok, error = not ok and res or nil, price = ok and res or nil }
 end)
 
-lib.callback.register('cipher:dealer:getStatus', function()
+lib.callback.register('XS-CriminalTablet:dealer:getStatus', function()
     return Dealer.GetStatus()
 end)
 
-lib.callback.register('cipher:dealer:contact', function(src)
+lib.callback.register('XS-CriminalTablet:dealer:contact', function(src)
     local ok, err = Dealer.Contact(src)
     return { ok = ok, error = err }
 end)

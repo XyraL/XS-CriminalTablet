@@ -45,13 +45,13 @@ local function refreshBlips(list)
         blips[#blips + 1] = blip
     end
 
-    TriggerEvent('cipher:client:territoriesChanged', list)
+    TriggerEvent('XS-CriminalTablet:client:territoriesChanged', list)
 end
 
-RegisterNetEvent('cipher:client:territoryUpdate', refreshBlips)
+RegisterNetEvent('XS-CriminalTablet:client:territoryUpdate', refreshBlips)
 
 CreateThread(function()
     Wait(1500)
-    local list = lib.callback.await('cipher:territory:getAll', false)
+    local list = lib.callback.await('XS-CriminalTablet:territory:getAll', false)
     refreshBlips(list)
 end)

@@ -1,6 +1,6 @@
 -- ─────────────────────────────────────────────────────────────
 -- Tasks: jobs members run (solo or co-op) for gang rep AND a separate
--- personal task rank (cipher_task_stats — independent of gang, survives
+-- personal task rank (xs_task_stats — independent of gang, survives
 -- switching gangs). minLevel on a task gates whether your rank can see it.
 --
 -- 'delivery': target the pickup item, then target a delivery ped at the
@@ -43,7 +43,7 @@ end
 local function cleanupVan(src, job)
     if not job or not job.vanNetId then return end
     local owner = job.coop and job.leaderSrc or src
-    TriggerClientEvent('cipher:client:taskCleanupVan', owner, job.vanNetId)
+    TriggerClientEvent('XS-CriminalTablet:client:taskCleanupVan', owner, job.vanNetId)
 end
 
 -- ── personal task rank ──
@@ -77,7 +77,7 @@ local function nextTaskLevelDef(level)
 end
 
 local function getStats(citizenid)
-    return MySQL.single.await('SELECT * FROM cipher_task_stats WHERE citizenid = ?', { citizenid })
+    return MySQL.single.await('SELECT * FROM xs_task_stats WHERE citizenid = ?', { citizenid })
 end
 
 local function ensureStats(citizenid, name)
@@ -86,7 +86,7 @@ local function ensureStats(citizenid, name)
     -- Multiple callbacks (getStatus/getAvailable/getAchievements/...) can
     -- all race to create the row on first tablet open — INSERT IGNORE
     -- makes the loser of that race a no-op instead of a duplicate-key error.
-    MySQL.insert.await('INSERT IGNORE INTO cipher_task_stats (citizenid, name) VALUES (?, ?)', { citizenid, name or citizenid })
+    MySQL.insert.await('INSERT IGNORE INTO xs_task_stats (citizenid, name) VALUES (?, ?)', { citizenid, name or citizenid })
     return getStats(citizenid)
 end
 
@@ -148,7 +148,7 @@ function Tasks.GetLeaderboard(src)
     local placeholders = {}
     for _ = 1, #citizenids do placeholders[#placeholders + 1] = '?' end
     local rows = MySQL.query.await(
-        ('SELECT name, level, total_completed FROM cipher_task_stats WHERE citizenid IN (%s) ORDER BY total_completed DESC LIMIT 10')
+        ('SELECT name, level, total_completed FROM xs_task_stats WHERE citizenid IN (%s) ORDER BY total_completed DESC LIMIT 10')
             :format(table.concat(placeholders, ',')),
         citizenids) or {}
     for _, r in ipairs(rows) do r.badges = achievementCountFor(r.level, r.total_completed) end
@@ -160,7 +160,7 @@ local function cooldownRemaining(citizenid, taskId)
     local def = byId[taskId]
     if not def or not def.cooldownMinutes or def.cooldownMinutes <= 0 then return 0 end
     local row = MySQL.single.await(
-        'SELECT completed_at FROM cipher_task_cooldowns WHERE citizenid = ? AND task_id = ?',
+        'SELECT completed_at FROM xs_task_cooldowns WHERE citizenid = ? AND task_id = ?',
         { citizenid, taskId })
     if not row then return 0 end
     local readyAt = row.completed_at + (def.cooldownMinutes * 60 * 1000)
@@ -241,7 +241,7 @@ function Tasks.InviteCoop(src, targetId)
     if active[targetId] then return false, 'that player is already on a job' end
 
     pendingCoopInvites[targetId] = { fromSrc = src, fromName = c.names[src] }
-    TriggerClientEvent('cipher:client:taskCoopInvite', targetId, { fromName = c.names[src] })
+    TriggerClientEvent('XS-CriminalTablet:client:taskCoopInvite', targetId, { fromName = c.names[src] })
     return true
 end
 
@@ -257,6 +257,8 @@ function Tasks.AcceptCoopInvite(src)
     c.members[#c.members + 1] = src
     c.names[src] = Framework.GetName(src) or 'Someone'
     Framework.Notify(invite.fromSrc, ('%s joined your crew.'):format(c.names[src]), 'success')
+    TriggerClientEvent('XS-CriminalTablet:client:refresh', invite.fromSrc)
+    TriggerClientEvent('XS-CriminalTablet:client:refresh', src)
     return true
 end
 
@@ -325,23 +327,23 @@ function Tasks.Accept(src, taskId)
     if (def.type or 'delivery') == 'kill' then
         local spawn = def.spawnPoints[math.random(#def.spawnPoints)]
         active[src] = { id = taskId, stage = 'kill', startedAt = os.time() * 1000, spawn = spawn }
-        TriggerClientEvent('cipher:client:taskUpdate', src,
+        TriggerClientEvent('XS-CriminalTablet:client:taskUpdate', src,
             { id = taskId, type = 'kill', spawn = spawn, pedModel = def.pedModel, weapon = def.weapon })
     elseif def.type == 'escort' then
         active[src] = { id = taskId, stage = 'escort', startedAt = os.time() * 1000 }
-        TriggerClientEvent('cipher:client:taskUpdate', src, stagePayloadFor(def))
+        TriggerClientEvent('XS-CriminalTablet:client:taskUpdate', src, stagePayloadFor(def))
     elseif def.type == 'heist' then
         active[src] = { id = taskId, stage = 'infiltrate', startedAt = os.time() * 1000 }
-        TriggerClientEvent('cipher:client:taskUpdate', src, stagePayloadFor(def, 'infiltrate'))
+        TriggerClientEvent('XS-CriminalTablet:client:taskUpdate', src, stagePayloadFor(def, 'infiltrate'))
     elseif def.type == 'courier' then
         local job = { id = taskId, stage = 'pickup_van', startedAt = os.time() * 1000,
                       vanSpawn = def.vanSpawns[math.random(#def.vanSpawns)],
                       dropoff = def.dropoffs[math.random(#def.dropoffs)] }
         active[src] = job
-        TriggerClientEvent('cipher:client:taskUpdate', src, stagePayloadFor(def, 'pickup_van', job))
+        TriggerClientEvent('XS-CriminalTablet:client:taskUpdate', src, stagePayloadFor(def, 'pickup_van', job))
     else
         active[src] = { id = taskId, stage = 'pickup', startedAt = os.time() * 1000 }
-        TriggerClientEvent('cipher:client:taskUpdate', src, stagePayloadFor(def))
+        TriggerClientEvent('XS-CriminalTablet:client:taskUpdate', src, stagePayloadFor(def))
     end
     return true
 end
@@ -376,7 +378,7 @@ function Tasks.AcceptCoop(src, taskId)
         job.spawn = def.spawnPoints[math.random(#def.spawnPoints)]
         for _, m in ipairs(c.members) do
             active[m] = job
-            TriggerClientEvent('cipher:client:taskUpdate', m,
+            TriggerClientEvent('XS-CriminalTablet:client:taskUpdate', m,
                 { id = taskId, type = 'kill', spawn = job.spawn, pedModel = def.pedModel, weapon = def.weapon, isLeader = (m == src) })
         end
     elseif def.type == 'escort' then
@@ -385,13 +387,13 @@ function Tasks.AcceptCoop(src, taskId)
             active[m] = job
             local payload = stagePayloadFor(def)
             payload.isLeader = (m == src)
-            TriggerClientEvent('cipher:client:taskUpdate', m, payload)
+            TriggerClientEvent('XS-CriminalTablet:client:taskUpdate', m, payload)
         end
     elseif def.type == 'heist' then
         job.stage = 'infiltrate'
         for _, m in ipairs(c.members) do
             active[m] = job
-            TriggerClientEvent('cipher:client:taskUpdate', m, stagePayloadFor(def, 'infiltrate'))
+            TriggerClientEvent('XS-CriminalTablet:client:taskUpdate', m, stagePayloadFor(def, 'infiltrate'))
         end
     elseif def.type == 'courier' then
         job.stage = 'pickup_van'
@@ -401,13 +403,13 @@ function Tasks.AcceptCoop(src, taskId)
             active[m] = job
             local payload = stagePayloadFor(def, 'pickup_van', job)
             payload.isLeader = (m == src)
-            TriggerClientEvent('cipher:client:taskUpdate', m, payload)
+            TriggerClientEvent('XS-CriminalTablet:client:taskUpdate', m, payload)
         end
     else
         job.stage = 'pickup'
         for _, m in ipairs(c.members) do
             active[m] = job
-            TriggerClientEvent('cipher:client:taskUpdate', m, stagePayloadFor(def))
+            TriggerClientEvent('XS-CriminalTablet:client:taskUpdate', m, stagePayloadFor(def))
         end
     end
 
@@ -422,11 +424,11 @@ function Tasks.Cancel(src)
     if job.coop then
         for _, m in ipairs(job.crew) do
             active[m] = nil
-            TriggerClientEvent('cipher:client:taskUpdate', m, nil)
+            TriggerClientEvent('XS-CriminalTablet:client:taskUpdate', m, nil)
         end
     else
         active[src] = nil
-        TriggerClientEvent('cipher:client:taskUpdate', src, nil)
+        TriggerClientEvent('XS-CriminalTablet:client:taskUpdate', src, nil)
     end
     return true
 end
@@ -440,10 +442,10 @@ local function rewardMember(src, cid, def)
     local leveledUp = newLevel > stats.level
 
     MySQL.update(
-        'UPDATE cipher_task_stats SET xp = ?, level = ?, total_completed = total_completed + 1, name = ? WHERE citizenid = ?',
+        'UPDATE xs_task_stats SET xp = ?, level = ?, total_completed = total_completed + 1, name = ? WHERE citizenid = ?',
         { newXp, newLevel, Framework.GetName(src) or cid, cid })
     MySQL.insert(
-        'INSERT INTO cipher_task_cooldowns (citizenid, task_id, completed_at) VALUES (?, ?, ?) ' ..
+        'INSERT INTO xs_task_cooldowns (citizenid, task_id, completed_at) VALUES (?, ?, ?) ' ..
         'ON DUPLICATE KEY UPDATE completed_at = ?',
         { cid, def.id, os.time() * 1000, os.time() * 1000 })
 
@@ -468,7 +470,7 @@ local function completeTask(src, def)
     if job and job.coop then
         for _, m in ipairs(job.crew) do
             active[m] = nil
-            TriggerClientEvent('cipher:client:taskUpdate', m, nil)
+            TriggerClientEvent('XS-CriminalTablet:client:taskUpdate', m, nil)
         end
         for _, m in ipairs(job.crew) do
             local mcid = job.cids[m]
@@ -476,7 +478,7 @@ local function completeTask(src, def)
         end
     else
         active[src] = nil
-        TriggerClientEvent('cipher:client:taskUpdate', src, nil)
+        TriggerClientEvent('XS-CriminalTablet:client:taskUpdate', src, nil)
         local cid = Framework.GetCitizenId(src)
         if cid then rewardMember(src, cid, def) end
     end
@@ -518,10 +520,10 @@ function Tasks.DoPickup(src)
             local p2 = {}
             for k, v in pairs(payload) do p2[k] = v end
             p2.isLeader = (m == src)
-            TriggerClientEvent('cipher:client:taskUpdate', m, p2)
+            TriggerClientEvent('XS-CriminalTablet:client:taskUpdate', m, p2)
         end
     else
-        TriggerClientEvent('cipher:client:taskUpdate', src, payload)
+        TriggerClientEvent('XS-CriminalTablet:client:taskUpdate', src, payload)
     end
     Framework.Notify(src, 'Picked up — deliver it.', 'success')
     return true
@@ -577,9 +579,9 @@ local function heistAdvance(src, fromStage, toStage, point)
     local payload = stagePayloadFor(def, toStage)
     payload.id = job.id
     if job.coop then
-        for _, m in ipairs(job.crew) do TriggerClientEvent('cipher:client:taskUpdate', m, payload) end
+        for _, m in ipairs(job.crew) do TriggerClientEvent('XS-CriminalTablet:client:taskUpdate', m, payload) end
     else
-        TriggerClientEvent('cipher:client:taskUpdate', src, payload)
+        TriggerClientEvent('XS-CriminalTablet:client:taskUpdate', src, payload)
     end
     return true
 end
@@ -644,10 +646,10 @@ function Tasks.DoPickupVan(src)
             local p2 = {}
             for k, v in pairs(payload) do p2[k] = v end
             p2.isLeader = (m == src)
-            TriggerClientEvent('cipher:client:taskUpdate', m, p2)
+            TriggerClientEvent('XS-CriminalTablet:client:taskUpdate', m, p2)
         end
     else
-        TriggerClientEvent('cipher:client:taskUpdate', src, payload)
+        TriggerClientEvent('XS-CriminalTablet:client:taskUpdate', src, payload)
     end
     Framework.Notify(src, "Package loaded — get it there.", 'success')
     return true
@@ -676,10 +678,10 @@ function Tasks.DoUnload(src)
             local p2 = {}
             for k, v in pairs(payload) do p2[k] = v end
             p2.isLeader = (m == src)
-            TriggerClientEvent('cipher:client:taskUpdate', m, p2)
+            TriggerClientEvent('XS-CriminalTablet:client:taskUpdate', m, p2)
         end
     else
-        TriggerClientEvent('cipher:client:taskUpdate', src, payload)
+        TriggerClientEvent('XS-CriminalTablet:client:taskUpdate', src, payload)
     end
     Framework.Notify(src, 'Unloaded — deliver it.', 'success')
     return true
@@ -701,9 +703,9 @@ function Tasks.DoCourierHandoff(src)
     local payload = stagePayloadFor(def, 'return', job)
     payload.id = job.id
     if job.coop then
-        for _, m in ipairs(job.crew) do TriggerClientEvent('cipher:client:taskUpdate', m, payload) end
+        for _, m in ipairs(job.crew) do TriggerClientEvent('XS-CriminalTablet:client:taskUpdate', m, payload) end
     else
-        TriggerClientEvent('cipher:client:taskUpdate', src, payload)
+        TriggerClientEvent('XS-CriminalTablet:client:taskUpdate', src, payload)
     end
     Framework.Notify(src, 'Delivered — bring the van home.', 'success')
     return true
@@ -742,12 +744,12 @@ CreateThread(function()
                             if job.coop then
                                 for _, m in ipairs(job.crew) do
                                     active[m] = nil
-                                    TriggerClientEvent('cipher:client:taskUpdate', m, nil)
+                                    TriggerClientEvent('XS-CriminalTablet:client:taskUpdate', m, nil)
                                     Framework.Notify(m, 'Job window expired.', 'error')
                                 end
                             else
                                 active[src] = nil
-                                TriggerClientEvent('cipher:client:taskUpdate', src, nil)
+                                TriggerClientEvent('XS-CriminalTablet:client:taskUpdate', src, nil)
                                 Framework.Notify(src, 'Job window expired.', 'error')
                             end
                         end
@@ -770,118 +772,118 @@ AddEventHandler('playerDropped', function()
     end
 end)
 
-RegisterNetEvent('cipher:server:acceptTaskCoopInvite', function()
+RegisterNetEvent('XS-CriminalTablet:server:acceptTaskCoopInvite', function()
     local src = source
     local ok, err = Tasks.AcceptCoopInvite(src)
     Framework.Notify(src, ok and 'Joined the crew.' or ('Could not join: ' .. tostring(err)), ok and 'success' or 'error')
 end)
 
-lib.callback.register('cipher:tasks:getAvailable', function(src)
+lib.callback.register('XS-CriminalTablet:tasks:getAvailable', function(src)
     local tasks, activeJob = Tasks.GetAvailable(src)
     return { tasks = tasks, active = activeJob }
 end)
 
-lib.callback.register('cipher:tasks:getStatus', function(src)
+lib.callback.register('XS-CriminalTablet:tasks:getStatus', function(src)
     return Tasks.GetStatus(src)
 end)
 
-lib.callback.register('cipher:tasks:getAchievements', function(src)
+lib.callback.register('XS-CriminalTablet:tasks:getAchievements', function(src)
     return Tasks.GetAchievements(src)
 end)
 
-lib.callback.register('cipher:tasks:getLeaderboard', function(src)
+lib.callback.register('XS-CriminalTablet:tasks:getLeaderboard', function(src)
     return Tasks.GetLeaderboard(src)
 end)
 
-lib.callback.register('cipher:tasks:getCoopTasks', function(src)
+lib.callback.register('XS-CriminalTablet:tasks:getCoopTasks', function(src)
     return Tasks.GetCoopTasks(src)
 end)
 
-lib.callback.register('cipher:tasks:getCrewStatus', function(src)
+lib.callback.register('XS-CriminalTablet:tasks:getCrewStatus', function(src)
     return Tasks.GetCrewStatus(src)
 end)
 
-lib.callback.register('cipher:tasks:inviteCoop', function(src, targetId)
+lib.callback.register('XS-CriminalTablet:tasks:inviteCoop', function(src, targetId)
     local ok, err = Tasks.InviteCoop(src, targetId)
     return { ok = ok, error = err }
 end)
 
-lib.callback.register('cipher:tasks:cancelCrew', function(src)
+lib.callback.register('XS-CriminalTablet:tasks:cancelCrew', function(src)
     local ok, err = Tasks.CancelCrew(src)
     return { ok = ok, error = err }
 end)
 
-lib.callback.register('cipher:tasks:acceptCoop', function(src, taskId)
+lib.callback.register('XS-CriminalTablet:tasks:acceptCoop', function(src, taskId)
     local ok, err = Tasks.AcceptCoop(src, taskId)
     return { ok = ok, error = err }
 end)
 
-lib.callback.register('cipher:tasks:accept', function(src, taskId)
+lib.callback.register('XS-CriminalTablet:tasks:accept', function(src, taskId)
     local ok, err = Tasks.Accept(src, taskId)
     return { ok = ok, error = err }
 end)
 
-lib.callback.register('cipher:tasks:cancel', function(src)
+lib.callback.register('XS-CriminalTablet:tasks:cancel', function(src)
     local ok, err = Tasks.Cancel(src)
     return { ok = ok, error = err }
 end)
 
-lib.callback.register('cipher:tasks:reportKill', function(src)
+lib.callback.register('XS-CriminalTablet:tasks:reportKill', function(src)
     local ok, err = Tasks.ReportKill(src)
     return { ok = ok, error = err }
 end)
 
-lib.callback.register('cipher:tasks:doPickup', function(src)
+lib.callback.register('XS-CriminalTablet:tasks:doPickup', function(src)
     local ok, err = Tasks.DoPickup(src)
     return { ok = ok, error = err }
 end)
 
-lib.callback.register('cipher:tasks:doDropoff', function(src)
+lib.callback.register('XS-CriminalTablet:tasks:doDropoff', function(src)
     local ok, err = Tasks.DoDropoff(src)
     return { ok = ok, error = err }
 end)
 
-lib.callback.register('cipher:tasks:doEscortComplete', function(src)
+lib.callback.register('XS-CriminalTablet:tasks:doEscortComplete', function(src)
     local ok, err = Tasks.DoEscortComplete(src)
     return { ok = ok, error = err }
 end)
 
-lib.callback.register('cipher:tasks:doInfiltrate', function(src)
+lib.callback.register('XS-CriminalTablet:tasks:doInfiltrate', function(src)
     local ok, err = Tasks.DoInfiltrate(src)
     return { ok = ok, error = err }
 end)
 
-lib.callback.register('cipher:tasks:doGrab', function(src)
+lib.callback.register('XS-CriminalTablet:tasks:doGrab', function(src)
     local ok, err = Tasks.DoGrab(src)
     return { ok = ok, error = err }
 end)
 
-lib.callback.register('cipher:tasks:doEscape', function(src)
+lib.callback.register('XS-CriminalTablet:tasks:doEscape', function(src)
     local ok, err = Tasks.DoEscape(src)
     return { ok = ok, error = err }
 end)
 
-lib.callback.register('cipher:tasks:registerVan', function(src, netId)
+lib.callback.register('XS-CriminalTablet:tasks:registerVan', function(src, netId)
     local ok, err = Tasks.RegisterVan(src, netId)
     return { ok = ok, error = err }
 end)
 
-lib.callback.register('cipher:tasks:doPickupVan', function(src)
+lib.callback.register('XS-CriminalTablet:tasks:doPickupVan', function(src)
     local ok, err = Tasks.DoPickupVan(src)
     return { ok = ok, error = err }
 end)
 
-lib.callback.register('cipher:tasks:doUnload', function(src)
+lib.callback.register('XS-CriminalTablet:tasks:doUnload', function(src)
     local ok, err = Tasks.DoUnload(src)
     return { ok = ok, error = err }
 end)
 
-lib.callback.register('cipher:tasks:doCourierHandoff', function(src)
+lib.callback.register('XS-CriminalTablet:tasks:doCourierHandoff', function(src)
     local ok, err = Tasks.DoCourierHandoff(src)
     return { ok = ok, error = err }
 end)
 
-lib.callback.register('cipher:tasks:doReturnVan', function(src)
+lib.callback.register('XS-CriminalTablet:tasks:doReturnVan', function(src)
     local ok, err = Tasks.DoReturnVan(src)
     return { ok = ok, error = err }
 end)

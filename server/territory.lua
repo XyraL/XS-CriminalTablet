@@ -25,15 +25,15 @@ local function loadZones()
     zones = {}
     -- seed any config zone that doesn't exist in the DB yet
     for zone, def in pairs(Config.Territories) do
-        local exists = MySQL.single.await('SELECT zone FROM cipher_territories WHERE zone = ?', { zone })
+        local exists = MySQL.single.await('SELECT zone FROM xs_territories WHERE zone = ?', { zone })
         if not exists then
             MySQL.insert.await(
-                'INSERT INTO cipher_territories (zone, label, color, coord_x, coord_y, coord_z) VALUES (?, ?, ?, ?, ?, ?)',
+                'INSERT INTO xs_territories (zone, label, color, coord_x, coord_y, coord_z) VALUES (?, ?, ?, ?, ?, ?)',
                 { zone, def.label or zone, def.color or 0, def.coords.x, def.coords.y, def.coords.z })
         end
     end
 
-    for _, row in ipairs(MySQL.query.await('SELECT * FROM cipher_territories') or {}) do
+    for _, row in ipairs(MySQL.query.await('SELECT * FROM xs_territories') or {}) do
         zones[row.zone] = rowToZone(row)
     end
 end
@@ -121,7 +121,7 @@ function Territory.CreateZone(zone, label, color)
     if zones[zone] then return false, 'zone already exists' end
 
     MySQL.insert.await(
-        'INSERT INTO cipher_territories (zone, label, color) VALUES (?, ?, ?)',
+        'INSERT INTO xs_territories (zone, label, color) VALUES (?, ?, ?)',
         { zone, label or zone, color or 0 })
     zones[zone] = { label = label or zone, color = color or 0, coords = nil, gangId = nil }
     return true, zone
@@ -129,7 +129,7 @@ end
 
 function Territory.SetZoneCoords(zone, coords)
     if not zones[zone] then return false, 'unknown zone' end
-    MySQL.update('UPDATE cipher_territories SET coord_x = ?, coord_y = ?, coord_z = ? WHERE zone = ?',
+    MySQL.update('UPDATE xs_territories SET coord_x = ?, coord_y = ?, coord_z = ? WHERE zone = ?',
         { coords.x, coords.y, coords.z, zone })
     zones[zone].coords = coords
     return true
@@ -138,11 +138,11 @@ end
 function Territory.UpdateZone(zone, fields)
     if not zones[zone] then return false, 'unknown zone' end
     if fields.label then
-        MySQL.update('UPDATE cipher_territories SET label = ? WHERE zone = ?', { fields.label, zone })
+        MySQL.update('UPDATE xs_territories SET label = ? WHERE zone = ?', { fields.label, zone })
         zones[zone].label = fields.label
     end
     if fields.color then
-        MySQL.update('UPDATE cipher_territories SET color = ? WHERE zone = ?', { fields.color, zone })
+        MySQL.update('UPDATE xs_territories SET color = ? WHERE zone = ?', { fields.color, zone })
         zones[zone].color = fields.color
     end
     return true
@@ -150,7 +150,7 @@ end
 
 function Territory.DeleteZone(zone)
     if not zones[zone] then return false, 'unknown zone' end
-    MySQL.update('DELETE FROM cipher_territories WHERE zone = ?', { zone })
+    MySQL.update('DELETE FROM xs_territories WHERE zone = ?', { zone })
     zones[zone] = nil
     return true
 end
@@ -161,7 +161,7 @@ function Territory.SetHolder(zone, gangId)
     if not zones[zone] then return false, 'unknown zone' end
     if gangId and not Gangs.Get(gangId) then return false, 'unknown gang' end
     local previousGangId = zones[zone].gangId
-    MySQL.update('UPDATE cipher_territories SET gang_id = ?, assigned_at = ? WHERE zone = ?',
+    MySQL.update('UPDATE xs_territories SET gang_id = ?, assigned_at = ? WHERE zone = ?',
         { gangId, os.time() * 1000, zone })
     zones[zone].gangId = gangId
     return true, nil, previousGangId
@@ -178,9 +178,9 @@ end
 CreateThread(function()
     Wait(2000)
     loadZones()
-    TriggerClientEvent('cipher:client:territoryUpdate', -1, Territory.GetAssigned())
+    TriggerClientEvent('XS-CriminalTablet:client:territoryUpdate', -1, Territory.GetAssigned())
 end)
 
-lib.callback.register('cipher:territory:getAll', function()
+lib.callback.register('XS-CriminalTablet:territory:getAll', function()
     return Territory.GetAssigned()
 end)

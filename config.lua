@@ -6,7 +6,7 @@ Config = {}
 Config.Debug = false
 
 -- Item that opens the device (register this in ox_inventory items).
-Config.DeviceItem = 'cipher_tablet'
+Config.DeviceItem = 'xs_tablet'
 
 -- Command to open the device (useful for testing without the item).
 Config.OpenCommand = 'gangops'
@@ -49,7 +49,7 @@ Config.Discord = {
     adminWebhook = '',
     gangWebhook = '',
     economyWebhook = '',
-    botName = 'Cipher',
+    botName = 'XyraL',
 }
 
 -- ─────────────────────────────────────────────────────────────
@@ -57,11 +57,11 @@ Config.Discord = {
 -- A separate NUI view for staff: gang CRUD, rep/notoriety/bank
 -- overrides, territory reassignment. No physical item — just a command,
 -- gated by an ACE permission. Grant it in server.cfg, e.g.:
---   add_ace group.admin cipher.admin allow
+--   add_ace group.admin xs-criminaltablet.admin allow
 --   add_principal identifier.fivem:1234 group.admin
 -- ─────────────────────────────────────────────────────────────
 Config.AdminCommand = 'admintablet'
-Config.AdminAce = 'cipher.admin'
+Config.AdminAce = 'xs-criminaltablet.admin'
 
 -- ─────────────────────────────────────────────────────────────
 -- Ranks & permissions
@@ -93,8 +93,8 @@ Config.MaxMembers = 30
 
 -- ─────────────────────────────────────────────────────────────
 -- Gangs (admin-defined only — there is no in-game "create gang" flow).
--- To add a gang: add an entry here, set `ensure cipher` to restart (or
--- run the server's `cipher` resource restart), and the gang is created/
+-- To add a gang: add an entry here, set `ensure XS-CriminalTablet` to restart (or
+-- run the server's `XS-CriminalTablet` resource restart), and the gang is created/
 -- updated automatically. `boss` is the citizenid who starts as Boss.
 -- Renaming the label or changing `boss` here updates the DB on the next
 -- restart; removing an entry does NOT delete the gang (do that manually
@@ -124,7 +124,7 @@ Config.Notoriety = {
     },
     -- Rep lost by a member who kills a fellow gang member. Detected via the
     -- victim's own client reporting their death + killer — see
-    -- server/notoriety.lua's 'cipher:server:reportGangKill'.
+    -- server/notoriety.lua's 'XS-CriminalTablet:server:reportGangKill'.
     friendlyFirePenalty = 100,
     -- How much notoriety various actions grant. Other resources can add to
     -- this via the exported AddNotoriety(gangId, amount, reason). Task,
@@ -272,7 +272,7 @@ Config.TierUnlocks = {
 -- ─────────────────────────────────────────────────────────────
 -- Task ranks
 -- Personal progression, separate from gang rep — independent of which
--- gang you're in (or if you leave one), tracked in cipher_task_stats.
+-- gang you're in (or if you leave one), tracked in xs_task_stats.
 -- `xp` on a task entry below feeds this; `reward` is the gang rep it pays,
 -- a completely separate number. minLevel on a task gates whether it shows
 -- up in your available list at all.
@@ -517,10 +517,10 @@ Config.Boosting = {
     -- plus the model + plate as a BOLO-style clue, and you have to actually
     -- drive around and spot it. Guards don't spawn until you get close, so
     -- the search phase itself is guard-free.
-    searchRadius = 150.0,
+    searchRadius = 250.0,
     guardTriggerRadius = 20.0,
     cooldownMinutes = 10,
-    timeLimitSeconds = 480,
+    timeLimitSeconds = 900,
     cashAccount = 'cash',
     -- g_m_y_lost_01 confirmed valid via /testmodel — the buyer you hand the car to at drop-off.
     buyerPedModel = 'g_m_y_lost_01',
@@ -599,7 +599,7 @@ Config.Boosting = {
         event = 'cd_dispatch:AddNotification',
         buildPayload = function(coords)
             return {
-                job_name = 'cipher_boost',
+                job_name = 'xs_boost',
                 job_label = 'Stolen Vehicle',
                 coords = coords,
                 icon = 'fa-solid fa-car-side',
@@ -628,7 +628,7 @@ Config.Boosting = {
         weapon = 'WEAPON_PISTOL',
     },
 
-    -- Achievements: computed live from cipher_boost_stats — no separate
+    -- Achievements: computed live from xs_boost_stats — no separate
     -- "earned" tracking needed, just a threshold check every time status
     -- is fetched. type = 'total_boosted' or 'level'.
     achievements = {
@@ -663,7 +663,7 @@ Config.Boosting = {
     coop = {
         enabled = true,
         maxCrewSize = 3,
-        timeLimitSeconds = 300,       -- shorter than solo's timeLimitSeconds
+        timeLimitSeconds = 900,       -- same 15-minute window as solo
         extraGuards = 2,              -- added on top of Config.Boosting.guards.count
         cashBonusPct = 25,            -- bonus applied before splitting across the crew
         vehicles = {

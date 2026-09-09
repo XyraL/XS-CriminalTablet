@@ -536,7 +536,7 @@ input::placeholder { color: #565d68; }
     margin-bottom: 14px; overflow: hidden; position: relative;
 }
 .territory-map {
-    width: 100%; height: 380px; display: block;
+    width: 100%; height: 480px; display: block;
     background: #0d1f2e; /* ocean base */
     background-image:
         linear-gradient(rgba(245,165,36,.05) 1px, transparent 1px),
@@ -804,3 +804,36 @@ input::placeholder { color: #565d68; }
 .territory-map .leaflet-tooltip {
     background: #14181f; color: #e8ecf4; border: 1px solid rgba(255,255,255,.12);
 }
+
+/* ── Player search (invite boxes) ── */
+.player-search { position: relative; flex: 1; min-width: 200px; }
+.player-search input { width: 100%; box-sizing: border-box; }
+.player-search-results {
+    position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 30;
+    background: var(--raised); border: 1px solid var(--hairline); border-radius: 8px;
+    max-height: 220px; overflow-y: auto; box-shadow: 0 12px 28px rgba(0,0,0,.5);
+}
+.player-search-row {
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    padding: 9px 12px; cursor: pointer; font-size: 13px;
+}
+.player-search-row:hover { background: var(--panel); color: var(--accent); }
+.player-search-id { color: var(--muted); font-size: 11px; letter-spacing: .06em; }
+.player-search-empty { padding: 9px 12px; color: var(--muted); font-size: 12px; }
+
+/* ── Incoming invite banner ── */
+.invite-banner {
+    position: absolute; top: 62px; right: 22px; z-index: 12;
+    display: flex; align-items: center; gap: 16px;
+    background: var(--raised); border: 1px solid var(--accent); border-radius: 10px;
+    padding: 12px 14px; max-width: 460px;
+    box-shadow: 0 12px 30px rgba(0,0,0,.5), 0 0 0 1px rgba(245,165,36,.15);
+    animation: toast-in .18s ease-out;
+}
+.invite-banner-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.invite-banner-title {
+    font-family: var(--display); font-size: 12px; font-weight: 600;
+    letter-spacing: .08em; text-transform: uppercase; color: var(--accent);
+}
+.invite-banner-body { font-size: 13px; color: var(--text); }
+.invite-banner-actions { display: flex; gap: 6px; flex-shrink: 0; }

@@ -54,7 +54,7 @@ end
 
 -- Add (or subtract, with negative amount) notoriety to a gang.
 -- Exported so other resources can reward your gangs:
---   exports.cipher:AddNotoriety(gangId, amount, reason)
+--   exports.XS-CriminalTablet:AddNotoriety(gangId, amount, reason)
 function Notoriety.Add(gangId, amount, reason)
     local gang = Gangs.Get(gangId)
     if not gang then return end
@@ -74,7 +74,7 @@ function Notoriety.Add(gangId, amount, reason)
         end
     end
 
-    MySQL.update('UPDATE cipher_gangs SET notoriety = ?, last_active = ?, perk_points = perk_points + ? WHERE id = ?',
+    MySQL.update('UPDATE xs_gangs SET notoriety = ?, last_active = ?, perk_points = perk_points + ? WHERE id = ?',
         { newVal, os.time() * 1000, perkPointsGained, gangId })
     if perkPointsGained > 0 then
         gang.perk_points = (gang.perk_points or 0) + perkPointsGained
@@ -83,11 +83,11 @@ function Notoriety.Add(gangId, amount, reason)
     end
 
     if Config.Debug then
-        print(('^3[cipher]^0 gang %d notoriety %+d (%s) -> %d'):format(gangId, amount, reason or '?', newVal))
+        print(('^3[XS-CriminalTablet]^0 gang %d notoriety %+d (%s) -> %d'):format(gangId, amount, reason or '?', newVal))
     end
 
     -- tier may have just changed, so re-push territory state (drives unlocks).
-    if Territory then TriggerClientEvent('cipher:client:territoryUpdate', -1, Territory.GetAssigned()) end
+    if Territory then TriggerClientEvent('XS-CriminalTablet:client:territoryUpdate', -1, Territory.GetAssigned()) end
 end
 
 exports('AddNotoriety', function(gangId, amount, reason)
@@ -98,7 +98,7 @@ end)
 -- victim self-reports their death + killer (client-side, like the kill
 -- task's "target down" report) — the server only acts on it if both
 -- players actually belong to the same gang and aren't the same person.
-RegisterNetEvent('cipher:server:reportGangKill', function(killerServerId)
+RegisterNetEvent('XS-CriminalTablet:server:reportGangKill', function(killerServerId)
     local victimSrc = source
     killerServerId = tonumber(killerServerId)
     if not killerServerId or killerServerId == victimSrc then return end

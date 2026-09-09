@@ -4,7 +4,7 @@
 -- ─────────────────────────────────────────────────────────────
 Vault = {}
 
-local function stashId(gangId) return ('cipher_gang_%d'):format(gangId) end
+local function stashId(gangId) return ('xs_gang_%d'):format(gangId) end
 
 -- Register/refresh the stash for a gang so ox_inventory knows about it.
 -- Slot/weight perks (Config.GangPerks) bump the base size.

@@ -1,19 +1,19 @@
-<h1 align="center">Cipher</h1>
+<h1 align="center">XS-CriminalTablet</h1>
 
 <p align="center">A modular criminal device for <strong>QBox</strong> and <strong>QBCore</strong> — gang ops, blackmarket and boosting in one encrypted tablet.</p>
 
 <p align="center">
-  <a href="https://github.com/XyraL/cipher/releases"><img src="https://img.shields.io/github/v/release/XyraL/cipher?style=flat-square&color=55dcff&label=release" alt="Latest release"></a>
+  <a href="https://github.com/XyraL/XS-CriminalTablet/releases"><img src="https://img.shields.io/github/v/release/XyraL/XS-CriminalTablet?style=flat-square&color=55dcff&label=release" alt="Latest release"></a>
   <img src="https://img.shields.io/badge/framework-QBox%20%7C%20QBCore-55dcff?style=flat-square" alt="framework">
   <img src="https://img.shields.io/badge/price-free-30d158?style=flat-square" alt="price">
-  <a href="https://xyralscripts.dev/docs-cipher"><img src="https://img.shields.io/badge/docs-xyralscripts.dev-a889ff?style=flat-square" alt="docs"></a>
+  <a href="https://xyralscripts.dev/docs-xs-criminaltablet"><img src="https://img.shields.io/badge/docs-xyralscripts.dev-a889ff?style=flat-square" alt="docs"></a>
   <a href="https://discord.gg/XRURAw4TM2"><img src="https://img.shields.io/badge/support-discord-5865F2?style=flat-square" alt="support"></a>
 </p>
 
 <p align="center">
-  <a href="https://xyralscripts.dev/cipher">Website</a> &nbsp;·&nbsp;
-  <a href="https://xyralscripts.dev/docs-cipher">Setup guide</a> &nbsp;·&nbsp;
-  <a href="https://github.com/XyraL/cipher/releases">Releases</a> &nbsp;·&nbsp;
+  <a href="https://xyralscripts.dev/xs-criminaltablet">Website</a> &nbsp;·&nbsp;
+  <a href="https://xyralscripts.dev/docs-xs-criminaltablet">Setup guide</a> &nbsp;·&nbsp;
+  <a href="https://github.com/XyraL/XS-CriminalTablet/releases">Releases</a> &nbsp;·&nbsp;
   <a href="https://discord.gg/XRURAw4TM2">Discord</a>
 </p>
 
@@ -30,11 +30,11 @@
 - Either `qbx_core` **or** `qb-core` — the bridge auto-detects which.
 
 ## Install
-1. Drop the `cipher` folder into your `resources`.
-2. Import `sql/cipher.sql` into your database.
-3. Add an item named `cipher_tablet` to your `ox_inventory` items (or change
+1. Drop the `XS-CriminalTablet` folder into your `resources`.
+2. Import `sql/xs_criminaltablet.sql` into your database.
+3. Add an item named `xs_tablet` to your `ox_inventory` items (or change
    `Config.DeviceItem`). Give yourself one, or use the `/gangops` command.
-4. Add `ensure cipher` to your `server.cfg` (after ox_lib, oxmysql, your framework,
+4. Add `ensure XS-CriminalTablet` to your `server.cfg` (after ox_lib, oxmysql, your framework,
    and ox_inventory).
 5. Tune `config.lua` — ranks, permissions, territory zones, notoriety, perks.
 
@@ -47,7 +47,7 @@
   No idle decay — the only way rep drops is the friendly-fire penalty
   (`Config.Notoriety.friendlyFirePenalty`, killing your own gang member) or
   an admin adjustment. Exported as
-  `exports.cipher:AddNotoriety(gangId, amount, reason)` so other resources
+  `exports.XS-CriminalTablet:AddNotoriety(gangId, amount, reason)` so other resources
   can feed it.
 - Territory: zones are assigned to a gang entirely through the admin tablet —
   there is no in-world capture and **no passive income**, holding a zone is
@@ -106,7 +106,7 @@
 - Treasury: **no forced dues** — every member can deposit whenever they want;
   withdrawing stays gated to `manage_bank` so one member can't drain it solo.
   Styled like an actual bank statement, with a dedicated transaction ledger
-  (`cipher_gang_bank_log`) separate from the general activity log, plus the
+  (`xs_gang_bank_log`) separate from the general activity log, plus the
   gang's full notoriety/tier shown alongside the balance.
 - Member activity tracking: `last_seen` updates whenever a member opens the
   tablet; the roster flags anyone inactive past `Config.GangInactivityDays`
@@ -130,7 +130,7 @@
 - Boosting app: car theft, **open to everyone** regardless of gang
   membership — the one app that isn't gated, and fully standalone (no
   gang rep, no gang tie-in of any kind — see `server/boosting.lua`).
-  Personal level + XP only this system tracks (`cipher_boost_stats`).
+  Personal level + XP only this system tracks (`xs_boost_stats`).
   `Config.Boosting.levels` is a cumulative tier list: at level N you can
   be assigned any vehicle from levels 1..N, each picking a random spot
   from its own `spawns` list. No custom lockpick/hotwire minigame here —
@@ -155,24 +155,25 @@
     spent on permanent, passive upgrades from `Config.Boosting.perks` — cash
     bonus %, fewer guards, a delayed dispatch alert, or a cheaper cooldown.
     No inventory items involved, nothing consumed.
-  - **Co-op**: invite a specific nearby player (like a gang invite) to crew up
-    on a separate, harder job — a bigger guard count, a shorter clock, and
-    dispatch always fires instantly regardless of any Signal Jammer perk.
-    Cash gets a bonus (`Config.Boosting.coop.cashBonusPct`) before splitting
-    evenly across the crew; XP is **not** split, every member gets the full
-    amount. Only the crew leader's client actually spawns the vehicle/guards/
-    buyer ped (everyone else just sees it and can help fight) — this matters
-    if you ever touch `client/boosting.lua`, since spawning per-member would
-    create duplicate entities.
+  - **Co-op**: search online players by name or ID and invite one to crew up
+    on a separate, harder job — a bigger guard count, and dispatch always
+    fires instantly regardless of any Signal Jammer perk. Cash gets a bonus
+    (`Config.Boosting.coop.cashBonusPct`) before splitting evenly across the
+    crew; XP is **not** split, every member gets the full amount. The whole
+    crew shares one search zone, and whichever member reaches it first spawns
+    the vehicle — the server hands out a single claim per spawned thing
+    (vehicle, guards, buyer ped) and broadcasts its network id to everyone
+    else. This matters if you ever touch `client/boosting.lua`: spawning
+    without claiming would create duplicate entities.
 
 ## Admin tablet
 Staff manage everything in-game instead of editing config.lua/the DB by hand.
 - Grant access in `server.cfg`:
   ```
-  add_ace group.admin cipher.admin allow
+  add_ace group.admin xs-criminaltablet.admin allow
   add_principal identifier.fivem:1234 group.admin
   ```
-  (or add `cipher.admin` to whatever principal/group fits your setup)
+  (or add `xs-criminaltablet.admin` to whatever principal/group fits your setup)
 - Run `/admintablet` to open the panel — six tabs:
   - **Dashboard**: at-a-glance totals (gang count, zones assigned, total gang
     bank, boosting player/total/active-job counts, chat message/handle
@@ -229,25 +230,25 @@ sole source of truth for permissions and state.
 ## Documentation
 
 Full setup guide, requirements and troubleshooting:
-**[xyralscripts.dev/docs-cipher](https://xyralscripts.dev/docs-cipher)**
+**[xyralscripts.dev/docs-xs-criminaltablet](https://xyralscripts.dev/docs-xs-criminaltablet)**
 
 ## Support
 
-- **Found a bug?** [Open an issue](https://github.com/XyraL/cipher/issues)
+- **Found a bug?** [Open an issue](https://github.com/XyraL/XS-CriminalTablet/issues)
 - **Need setup help?** [Join the Discord](https://discord.gg/XRURAw4TM2) — check the setup guide first, it usually has the answer
 
-## The rest of the Cipher line
+## My other scripts
 
 All free, all source-available.
 
 | Script | What it is |
 |---|---|
-| **[Cipher MDT](https://github.com/XyraL/cipher-mdt)** | multi-department MDT for QBox — police, EMS and fire with live CAD, records, patient care and a live unit map. |
-| **[Cipher Admin](https://github.com/XyraL/cipher-admin)** | advanced admin suite for QBox and QBCore — player management, bans, reports, inventory tools and entity inspection. |
-| **[Cipher Drone](https://github.com/XyraL/cipher-drone)** | deployable police drone for QBox and QBCore — smooth flight, thermal, spotlight, tracker darts and real counterplay. |
-| **[Cipher Trucking](https://github.com/XyraL/cipher-trucking)** | civilian trucking job for QBox and QBCore — live route map, truck ownership, fuel and maintenance, and companies. |
-| **[Cipher MultiCharacter](https://github.com/XyraL/cipher-multicharacter)** | cinematic character selection for QBox and QBCore — identity dossiers, saved appearances, spawn cameras and configurable slots. |
-| **[Cipher Dispatch](https://github.com/XyraL/cipher-dispatch)** | multi-department live dispatch for QBox and QBCore — responder tracking, priority calls, TAC radio and provider integrations. |
+| **[XS-MDT](https://github.com/XyraL/XS-MDT)** | multi-department MDT for QBox — police, EMS and fire with live CAD, records, patient care and a live unit map. |
+| **[XS-AdminMenu](https://github.com/XyraL/XS-AdminMenu)** | advanced admin suite for QBox and QBCore — player management, bans, reports, inventory tools and entity inspection. |
+| **[XS-Drone](https://github.com/XyraL/XS-Drone)** | deployable police drone for QBox and QBCore — smooth flight, thermal, spotlight, tracker darts and real counterplay. |
+| **[XS-Trucking](https://github.com/XyraL/XS-Trucking)** | civilian trucking job for QBox and QBCore — live route map, truck ownership, fuel and maintenance, and companies. |
+| **[XS-MultiCharacter](https://github.com/XyraL/XS-MultiCharacter)** | cinematic character selection for QBox and QBCore — identity dossiers, saved appearances, spawn cameras and configurable slots. |
+| **[XS-Dispatch](https://github.com/XyraL/XS-Dispatch)** | multi-department live dispatch for QBox and QBCore — responder tracking, priority calls, TAC radio and provider integrations. |
 
 ## License
 

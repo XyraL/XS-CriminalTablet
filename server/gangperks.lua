@@ -7,7 +7,7 @@
 GangPerks = {}
 
 local function ownedPerkIds(gangId)
-    local rows = MySQL.query.await('SELECT perk_id FROM cipher_gang_perks WHERE gang_id = ?', { gangId }) or {}
+    local rows = MySQL.query.await('SELECT perk_id FROM xs_gang_perks WHERE gang_id = ?', { gangId }) or {}
     local owned = {}
     for _, r in ipairs(rows) do owned[r.perk_id] = true end
     return owned
@@ -88,22 +88,22 @@ function GangPerks.BuyPerk(src, perkId)
     if (gang.perk_points or 0) < def.cost then return false, 'not enough perk points' end
 
     local ok = pcall(function()
-        MySQL.insert.await('INSERT INTO cipher_gang_perks (gang_id, perk_id) VALUES (?, ?)', { gang.id, perkId })
+        MySQL.insert.await('INSERT INTO xs_gang_perks (gang_id, perk_id) VALUES (?, ?)', { gang.id, perkId })
     end)
     if not ok then return false, 'already owned' end
 
     gang.perk_points = gang.perk_points - def.cost
-    MySQL.update('UPDATE cipher_gangs SET perk_points = perk_points - ? WHERE id = ?', { def.cost, gang.id })
+    MySQL.update('UPDATE xs_gangs SET perk_points = perk_points - ? WHERE id = ?', { def.cost, gang.id })
     Gangs.Log(gang.id, ('%s bought the "%s" perk'):format(Framework.GetName(src) or 'Someone', def.label))
     return true
 end
 
-lib.callback.register('cipher:gangperks:getTree', function(src)
+lib.callback.register('XS-CriminalTablet:gangperks:getTree', function(src)
     local branches, points = GangPerks.GetTree(src)
     return { branches = branches, perkPoints = points }
 end)
 
-lib.callback.register('cipher:gangperks:buyPerk', function(src, perkId)
+lib.callback.register('XS-CriminalTablet:gangperks:buyPerk', function(src, perkId)
     local ok, err = GangPerks.BuyPerk(src, perkId)
     return { ok = ok, error = err }
 end)

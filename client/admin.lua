@@ -5,7 +5,7 @@
 -- ─────────────────────────────────────────────────────────────
 local isOpen = false
 
-RegisterNetEvent('cipher:client:openAdmin', function()
+RegisterNetEvent('XS-CriminalTablet:client:openAdmin', function()
     if isOpen then return end
     isOpen = true
     SetNuiFocus(true, true)
@@ -20,33 +20,33 @@ RegisterNUICallback('admin:close', function(_, cb)
 end)
 
 local adminAllowed = {
-    ['cipher:admin:getOverview']  = true,
-    ['cipher:admin:getMembers']   = true,
-    ['cipher:admin:kickMember']   = true,
-    ['cipher:admin:setMemberGrade'] = true,
-    ['cipher:admin:createGang']  = true,
-    ['cipher:admin:updateGang']  = true,
-    ['cipher:admin:disbandGang'] = true,
-    ['cipher:admin:adjustRep']     = true,
-    ['cipher:admin:adjustNotoriety'] = true,
-    ['cipher:admin:setBank']      = true,
-    ['cipher:admin:setTerritory'] = true,
-    ['cipher:admin:createZone']   = true,
-    ['cipher:admin:setZoneCoords'] = true,
-    ['cipher:admin:updateZone']   = true,
-    ['cipher:admin:deleteZone']   = true,
-    ['cipher:admin:boostSearch']      = true,
-    ['cipher:admin:boostSetStats']    = true,
-    ['cipher:admin:boostResetStats']  = true,
-    ['cipher:admin:boostDashboard']   = true,
-    ['cipher:admin:chatGetWorld']        = true,
-    ['cipher:admin:chatDeleteWorld']     = true,
-    ['cipher:admin:chatResolveHandle']   = true,
-    ['cipher:admin:dealerGetStock']        = true,
-    ['cipher:admin:dealerReroll']          = true,
-    ['cipher:admin:dealerClearCooldown']   = true,
-    ['cipher:admin:dealerGetStatus']       = true,
-    ['cipher:admin:getDashboard']          = true,
+    ['XS-CriminalTablet:admin:getOverview']  = true,
+    ['XS-CriminalTablet:admin:getMembers']   = true,
+    ['XS-CriminalTablet:admin:kickMember']   = true,
+    ['XS-CriminalTablet:admin:setMemberGrade'] = true,
+    ['XS-CriminalTablet:admin:createGang']  = true,
+    ['XS-CriminalTablet:admin:updateGang']  = true,
+    ['XS-CriminalTablet:admin:disbandGang'] = true,
+    ['XS-CriminalTablet:admin:adjustRep']     = true,
+    ['XS-CriminalTablet:admin:adjustNotoriety'] = true,
+    ['XS-CriminalTablet:admin:setBank']      = true,
+    ['XS-CriminalTablet:admin:setTerritory'] = true,
+    ['XS-CriminalTablet:admin:createZone']   = true,
+    ['XS-CriminalTablet:admin:setZoneCoords'] = true,
+    ['XS-CriminalTablet:admin:updateZone']   = true,
+    ['XS-CriminalTablet:admin:deleteZone']   = true,
+    ['XS-CriminalTablet:admin:boostSearch']      = true,
+    ['XS-CriminalTablet:admin:boostSetStats']    = true,
+    ['XS-CriminalTablet:admin:boostResetStats']  = true,
+    ['XS-CriminalTablet:admin:boostDashboard']   = true,
+    ['XS-CriminalTablet:admin:chatGetWorld']        = true,
+    ['XS-CriminalTablet:admin:chatDeleteWorld']     = true,
+    ['XS-CriminalTablet:admin:chatResolveHandle']   = true,
+    ['XS-CriminalTablet:admin:dealerGetStock']        = true,
+    ['XS-CriminalTablet:admin:dealerReroll']          = true,
+    ['XS-CriminalTablet:admin:dealerClearCooldown']   = true,
+    ['XS-CriminalTablet:admin:dealerGetStatus']       = true,
+    ['XS-CriminalTablet:admin:getDashboard']          = true,
 }
 
 RegisterNUICallback('admin:call', function(payload, cb)

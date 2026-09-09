@@ -9,7 +9,7 @@ if Config.DrugSelling.enabled then
 
     local function sellMenuFor(ped)
         if not DoesEntityExist(ped) then return end
-        local sellable = lib.callback.await('cipher:drugs:getSellable', false)
+        local sellable = lib.callback.await('XS-CriminalTablet:drugs:getSellable', false)
         if not sellable or #sellable == 0 then
             lib.notify({ description = "You don't have anything to sell.", type = 'error' })
             return
@@ -50,7 +50,7 @@ if Config.DrugSelling.enabled then
 
                     if not completed then return end
 
-                    local res = lib.callback.await('cipher:drugs:sell', false, s.item)
+                    local res = lib.callback.await('XS-CriminalTablet:drugs:sell', false, s.item)
                     if res and res.ok then
                         lib.notify({ description = ('Sold for $%d.'):format(res.price), type = 'success' })
                     else
@@ -60,8 +60,8 @@ if Config.DrugSelling.enabled then
             }
         end
 
-        lib.registerContext({ id = 'cipher_selldrug', title = 'Sell', options = options })
-        lib.showContext('cipher_selldrug')
+        lib.registerContext({ id = 'xs_selldrug', title = 'Sell', options = options })
+        lib.showContext('xs_selldrug')
     end
 
     -- GetGamePool('CPed') returns every ped handle currently streamed in,
@@ -83,7 +83,7 @@ if Config.DrugSelling.enabled then
         local ok = pcall(function()
             exports.ox_target:addGlobalPed({
                 {
-                    name = 'cipher_sell_drugs',
+                    name = 'xs_sell_drugs',
                     label = 'Sell Drugs',
                     icon = 'fas fa-sack-dollar',
                     distance = 2.5,

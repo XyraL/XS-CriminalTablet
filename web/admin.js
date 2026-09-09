@@ -4,7 +4,7 @@
 // server-side (ACE check) — this is just the panel.
 // ─────────────────────────────────────────────────────────────
 (() => {
-    const RES = 'cipher';
+    const RES = typeof GetParentResourceName === 'function' ? GetParentResourceName() : 'XS-CriminalTablet';
     const $ = (s) => document.querySelector(s);
 
     async function nui(cb, body = {}) {
@@ -80,7 +80,7 @@
     $('#adminCloseBtn').onclick = () => nui('admin:close');
 
     async function refresh() {
-        overview = await call('cipher:admin:getOverview');
+        overview = await call('XS-CriminalTablet:admin:getOverview');
         if (!overview || !overview.gangs) overview = { gangs: [], territories: [] };
         renderGangs();
         renderTerritories();
@@ -139,18 +139,18 @@
                         setTimeout(() => { btn.dataset.confirm = '0'; btn.textContent = '✕'; }, 3000);
                         return;
                     }
-                    await callChecked('Disband', 'cipher:admin:disbandGang', id);
+                    await callChecked('Disband', 'XS-CriminalTablet:admin:disbandGang', id);
                 } else if (act === 'updateLabel') {
-                    await callChecked('Rename', 'cipher:admin:updateGang', id, { label: card.querySelector('.a-label').value });
+                    await callChecked('Rename', 'XS-CriminalTablet:admin:updateGang', id, { label: card.querySelector('.a-label').value });
                 } else if (act === 'updateBoss') {
                     const boss = card.querySelector('.a-boss').value.trim();
                     if (!boss) return;
-                    await callChecked('Set boss', 'cipher:admin:updateGang', id, { boss });
+                    await callChecked('Set boss', 'XS-CriminalTablet:admin:updateGang', id, { boss });
                 } else if (act === 'notoriety') {
                     const amt = Number(card.querySelector('.a-notoriety').value) || 0;
-                    await callChecked('Notoriety adjust', 'cipher:admin:adjustNotoriety', id, amt);
+                    await callChecked('Notoriety adjust', 'XS-CriminalTablet:admin:adjustNotoriety', id, amt);
                 } else if (act === 'bank') {
-                    await callChecked('Bank set', 'cipher:admin:setBank', id, Number(card.querySelector('.a-bank').value) || 0);
+                    await callChecked('Bank set', 'XS-CriminalTablet:admin:setBank', id, Number(card.querySelector('.a-bank').value) || 0);
                 } else if (act === 'toggleMembers') {
                     await renderMembers(id, card.querySelector(`[data-members="${id}"]`));
                     return;
@@ -162,7 +162,7 @@
 
     async function renderMembers(gangId, container, force = false) {
         if (!force && container.dataset.loaded === '1') { container.innerHTML = ''; container.dataset.loaded = '0'; return; }
-        const members = await call('cipher:admin:getMembers', gangId);
+        const members = await call('XS-CriminalTablet:admin:getMembers', gangId);
         container.innerHTML = '';
         container.dataset.loaded = '1';
         (members || []).forEach((m) => {
@@ -183,13 +183,13 @@
         container.querySelectorAll('[data-rep-cid]').forEach((btn) => {
             btn.onclick = async () => {
                 const amt = Number(btn.parentElement.querySelector('.rep-delta').value) || 0;
-                await callChecked('Rep adjust', 'cipher:admin:adjustRep', btn.dataset.repCid, amt);
+                await callChecked('Rep adjust', 'XS-CriminalTablet:admin:adjustRep', btn.dataset.repCid, amt);
                 await renderMembers(gangId, container, true);
             };
         });
         container.querySelectorAll('[data-promote-cid]').forEach((btn) => {
             btn.onclick = async () => {
-                await callChecked('Grade set', 'cipher:admin:setMemberGrade', gangId, btn.dataset.promoteCid, btn.dataset.grade);
+                await callChecked('Grade set', 'XS-CriminalTablet:admin:setMemberGrade', gangId, btn.dataset.promoteCid, btn.dataset.grade);
                 await renderMembers(gangId, container, true);
             };
         });
@@ -201,7 +201,7 @@
                     setTimeout(() => { btn.dataset.confirm = '0'; btn.textContent = '✕'; }, 3000);
                     return;
                 }
-                await callChecked('Kick', 'cipher:admin:kickMember', gangId, btn.dataset.kickCid);
+                await callChecked('Kick', 'XS-CriminalTablet:admin:kickMember', gangId, btn.dataset.kickCid);
                 await renderMembers(gangId, container, true);
             };
         });
@@ -237,20 +237,20 @@
         list.querySelectorAll('[data-set-zone]').forEach((btn) => {
             btn.onclick = async () => {
                 const sel = btn.parentElement.querySelector('.terr-holder');
-                await callChecked('Territory set', 'cipher:admin:setTerritory', btn.dataset.setZone, sel.value || null);
+                await callChecked('Territory set', 'XS-CriminalTablet:admin:setTerritory', btn.dataset.setZone, sel.value || null);
                 await refresh();
             };
         });
         list.querySelectorAll('[data-move-zone]').forEach((btn) => {
             btn.onclick = async () => {
-                await callChecked('Zone moved', 'cipher:admin:setZoneCoords', btn.dataset.moveZone);
+                await callChecked('Zone moved', 'XS-CriminalTablet:admin:setZoneCoords', btn.dataset.moveZone);
                 await refresh();
             };
         });
         list.querySelectorAll('[data-label-zone]').forEach((btn) => {
             btn.onclick = async () => {
                 const card = btn.closest('.admin-gang-card');
-                await callChecked('Zone renamed', 'cipher:admin:updateZone', btn.dataset.labelZone, { label: card.querySelector('.terr-label').value });
+                await callChecked('Zone renamed', 'XS-CriminalTablet:admin:updateZone', btn.dataset.labelZone, { label: card.querySelector('.terr-label').value });
                 await refresh();
             };
         });
@@ -262,7 +262,7 @@
                     setTimeout(() => { btn.dataset.confirm = '0'; btn.textContent = '✕'; }, 3000);
                     return;
                 }
-                await callChecked('Zone deleted', 'cipher:admin:deleteZone', btn.dataset.delZone);
+                await callChecked('Zone deleted', 'XS-CriminalTablet:admin:deleteZone', btn.dataset.delZone);
                 await refresh();
             };
         });
@@ -272,9 +272,9 @@
         const key = $('#newZoneKey').value.trim();
         const label = $('#newZoneLabel').value.trim();
         if (!key) return;
-        const res = await call('cipher:admin:createZone', key, label || key, 0);
+        const res = await call('XS-CriminalTablet:admin:createZone', key, label || key, 0);
         if (!res.ok) { flash(res.error || 'Failed to create zone', 'error'); return; }
-        await callChecked('Zone placed', 'cipher:admin:setZoneCoords', res.zone);
+        await callChecked('Zone placed', 'XS-CriminalTablet:admin:setZoneCoords', res.zone);
         $('#newZoneKey').value = '';
         $('#newZoneLabel').value = '';
         await refresh();
@@ -284,7 +284,7 @@
         const name = $('#newGangName').value.trim();
         const label = $('#newGangLabelAdmin').value.trim();
         const boss = $('#newGangBoss').value.trim();
-        const res = await call('cipher:admin:createGang', name, label, boss);
+        const res = await call('XS-CriminalTablet:admin:createGang', name, label, boss);
         $('#adminCreateError').textContent = '';
         if (res.ok) {
             $('#newGangName').value = '';
@@ -299,7 +299,7 @@
 
     // ── Dashboard ──
     async function renderDashboard() {
-        const d = await call('cipher:admin:getDashboard');
+        const d = await call('XS-CriminalTablet:admin:getDashboard');
         if (!d) return;
         $('#statGangCount').textContent = d.gangCount;
         $('#statZoneCount').textContent = d.zoneCount;
@@ -320,7 +320,7 @@
     // ── Boosting oversight ──
     async function renderBoostSearch() {
         const query = $('#boostSearchInput') ? $('#boostSearchInput').value.trim() : '';
-        const rows = await call('cipher:admin:boostSearch', query);
+        const rows = await call('XS-CriminalTablet:admin:boostSearch', query);
         const list = $('#boostSearchResults');
         list.innerHTML = '';
         if (!rows || !rows.length) { list.innerHTML = '<div class="log-empty">No matches.</div>'; return; }
@@ -357,7 +357,7 @@
                     total_cash: Number(card.querySelector('.b-cash').value),
                     perk_points: Number(card.querySelector('.b-perks').value),
                 };
-                await callChecked('Stats saved', 'cipher:admin:boostSetStats', btn.dataset.saveCid, fields);
+                await callChecked('Stats saved', 'XS-CriminalTablet:admin:boostSetStats', btn.dataset.saveCid, fields);
                 await renderBoostSearch();
             };
         });
@@ -368,7 +368,7 @@
                     setTimeout(() => { btn.dataset.confirm = '0'; btn.textContent = '✕'; }, 3000);
                     return;
                 }
-                await callChecked('Stats reset', 'cipher:admin:boostResetStats', btn.dataset.resetCid);
+                await callChecked('Stats reset', 'XS-CriminalTablet:admin:boostResetStats', btn.dataset.resetCid);
                 await renderBoostSearch();
             };
         });
@@ -377,7 +377,7 @@
 
     // ── Blackmarket moderation ──
     async function renderChatMod() {
-        const rows = await call('cipher:admin:chatGetWorld');
+        const rows = await call('XS-CriminalTablet:admin:chatGetWorld');
         const list = $('#chatModList');
         list.innerHTML = '';
         if (!rows || !rows.length) { list.innerHTML = '<div class="log-empty">No messages yet.</div>'; return; }
@@ -396,7 +396,7 @@
 
         list.querySelectorAll('[data-del-msg]').forEach((btn) => {
             btn.onclick = async () => {
-                await callChecked('Message deleted', 'cipher:admin:chatDeleteWorld', btn.dataset.delMsg);
+                await callChecked('Message deleted', 'XS-CriminalTablet:admin:chatDeleteWorld', btn.dataset.delMsg);
                 await renderChatMod();
             };
         });
@@ -405,14 +405,14 @@
         $('#resolveHandleBtn').onclick = async () => {
             const handle = $('#resolveHandleInput').value.trim();
             if (!handle) return;
-            const res = await call('cipher:admin:chatResolveHandle', handle);
+            const res = await call('XS-CriminalTablet:admin:chatResolveHandle', handle);
             $('#resolveHandleResult').textContent = res.ok ? `→ ${res.citizenid}` : (res.error || 'not found');
         };
     }
 
     // ── Dealer control ──
     async function renderDealerStock() {
-        const stock = await call('cipher:admin:dealerGetStock');
+        const stock = await call('XS-CriminalTablet:admin:dealerGetStock');
         const list = $('#dealerStockList');
         list.innerHTML = '';
         if (!stock || !stock.length) { list.innerHTML = '<div class="log-empty">No stock rolled yet.</div>'; return; }
@@ -425,13 +425,13 @@
     }
     if ($('#dealerRerollBtn')) {
         $('#dealerRerollBtn').onclick = async () => {
-            await callChecked('Stock rerolled', 'cipher:admin:dealerReroll');
+            await callChecked('Stock rerolled', 'XS-CriminalTablet:admin:dealerReroll');
             await renderDealerStock();
         };
     }
     if ($('#dealerClearCooldownBtn')) {
         $('#dealerClearCooldownBtn').onclick = async () => {
-            await callChecked('Cooldown cleared', 'cipher:admin:dealerClearCooldown');
+            await callChecked('Cooldown cleared', 'XS-CriminalTablet:admin:dealerClearCooldown');
             await renderDashboard();
         };
     }

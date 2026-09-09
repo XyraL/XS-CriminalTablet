@@ -3,12 +3,12 @@
 -- ─────────────────────────────────────────────────────────────
 CreateThread(function()
     while not LocalPlayer.state.isLoggedIn and not (Framework and Framework.name) do Wait(250) end
-    if Config.Debug then print('^2[cipher]^0 client ready') end
+    if Config.Debug then print('^2[XS-CriminalTablet]^0 client ready') end
 end)
 
--- ox_inventory client-side usable item: item.client.export = 'cipher.useDevice'
+-- ox_inventory client-side usable item: item.client.export = 'XS-CriminalTablet.useDevice'
 exports('useDevice', function(data, slot)
-    TriggerEvent('cipher:client:openDevice')
+    TriggerEvent('XS-CriminalTablet:client:openDevice')
 end)
 
 -- ── friendly-fire report ──
@@ -26,7 +26,7 @@ CreateThread(function()
             if killer and killer ~= 0 and IsPedAPlayer(killer) and killer ~= ped then
                 local killerPlayer = NetworkGetPlayerIndexFromPed(killer)
                 if killerPlayer and killerPlayer ~= -1 then
-                    TriggerServerEvent('cipher:server:reportGangKill', GetPlayerServerId(killerPlayer))
+                    TriggerServerEvent('XS-CriminalTablet:server:reportGangKill', GetPlayerServerId(killerPlayer))
                 end
             end
         end
@@ -194,8 +194,8 @@ local function spawnKillTarget(spawn, model, weapon, isLeader)
     killPed = CreatePed(4, model, spawn.x, spawn.y, spawn.z, 0.0, true, true)
     snapToGround(killPed)
 
-    AddRelationshipGroup('cipher_hitcontract')
-    local hostileGroup = GetHashKey('cipher_hitcontract')
+    AddRelationshipGroup('xs_hitcontract')
+    local hostileGroup = GetHashKey('xs_hitcontract')
     SetRelationshipBetweenGroups(5, hostileGroup, `PLAYER`) -- 5 = hate
     SetRelationshipBetweenGroups(5, `PLAYER`, hostileGroup)
     SetPedRelationshipGroupHash(killPed, hostileGroup)
@@ -220,7 +220,7 @@ local function spawnKillTarget(spawn, model, weapon, isLeader)
             Wait(1000)
             if not killPed then break end
             if not DoesEntityExist(killPed) or IsEntityDead(killPed) then
-                local res = lib.callback.await('cipher:tasks:reportKill', false)
+                local res = lib.callback.await('XS-CriminalTablet:tasks:reportKill', false)
                 if res and res.ok then
                     lib.notify({ description = 'Target eliminated.', type = 'success' })
                 end
@@ -232,12 +232,12 @@ local function spawnKillTarget(spawn, model, weapon, isLeader)
 end
 
 local function doPickup()
-    local res = lib.callback.await('cipher:tasks:doPickup', false)
+    local res = lib.callback.await('XS-CriminalTablet:tasks:doPickup', false)
     if res and not res.ok then lib.notify({ description = res.error or 'Failed', type = 'error' }) end
 end
 
 local function doDropoff()
-    local res = lib.callback.await('cipher:tasks:doDropoff', false)
+    local res = lib.callback.await('XS-CriminalTablet:tasks:doDropoff', false)
     if res and not res.ok then lib.notify({ description = res.error or 'Failed', type = 'error' }) end
 end
 
@@ -250,7 +250,7 @@ local function setupPickupTarget(coords)
             return exports.ox_target:addSphereZone({
                 coords = coords, radius = 1.2, debug = false,
                 options = {
-                    { name = 'cipher_pickup_task', label = 'Pick up Package', icon = 'fas fa-box',
+                    { name = 'xs_pickup_task', label = 'Pick up Package', icon = 'fas fa-box',
                       onSelect = doPickup },
                 },
             })
@@ -300,12 +300,12 @@ local function spawnEscort(spawn, destination, model, radius, isLeader)
             if not escortPed then break end
             if not DoesEntityExist(escortPed) or IsEntityDead(escortPed) then
                 lib.notify({ description = 'The escort was killed — job failed.', type = 'error' })
-                lib.callback.await('cipher:tasks:cancel', false)
+                lib.callback.await('XS-CriminalTablet:tasks:cancel', false)
                 break
             end
             local playerCoords = GetEntityCoords(PlayerPedId())
             if #(playerCoords - destination) <= (radius or 5.0) and #(GetEntityCoords(escortPed) - destination) <= (radius or 5.0) + 3.0 then
-                local res = lib.callback.await('cipher:tasks:doEscortComplete', false)
+                local res = lib.callback.await('XS-CriminalTablet:tasks:doEscortComplete', false)
                 if res and res.ok then
                     lib.notify({ description = 'Escort delivered safely.', type = 'success' })
                 elseif res and res.error then
@@ -327,7 +327,7 @@ local function setupHeistTarget(coords, label, radius, onArrive)
             return exports.ox_target:addSphereZone({
                 coords = coords, radius = radius or 2.5, debug = false,
                 options = {
-                    { name = 'cipher_heist_stage', label = label, icon = 'fas fa-user-secret', onSelect = onArrive },
+                    { name = 'xs_heist_stage', label = label, icon = 'fas fa-user-secret', onSelect = onArrive },
                 },
             })
         end)
@@ -347,7 +347,7 @@ local function setupCourierTarget(coords, label, radius, onArrive)
             return exports.ox_target:addSphereZone({
                 coords = coords, radius = radius or 6.0, debug = false,
                 options = {
-                    { name = 'cipher_courier_stage', label = label, icon = 'fas fa-truck', onSelect = onArrive },
+                    { name = 'xs_courier_stage', label = label, icon = 'fas fa-truck', onSelect = onArrive },
                 },
             })
         end)
@@ -371,7 +371,7 @@ local function setupVanBackTarget(van, label, onArrive)
     if hasTarget then
         local ok = pcall(function()
             exports.ox_target:addLocalEntity(van, {
-                { name = 'cipher_courier_boot', label = label, icon = 'fas fa-box-open',
+                { name = 'xs_courier_boot', label = label, icon = 'fas fa-box-open',
                   bones = { 'boot' }, distance = 2.5, onSelect = onArrive },
             })
         end)
@@ -408,14 +408,14 @@ local function spawnCourierVan(vanSpawn, model, isLeader)
     clearCourierVan()
     if isLeader == false then return end
     if not vanSpawn then
-        print('^1[cipher]^0 spawnCourierVan: no vanSpawn coords in job payload')
+        print('^1[XS-CriminalTablet]^0 spawnCourierVan: no vanSpawn coords in job payload')
         return
     end
 
     local hash = type(model) == 'string' and GetHashKey(model) or model
     if not IsModelInCdimage(hash) or not IsModelValid(hash) then
         lib.notify({ description = ('Bad van model for this task (%s) — tell an admin to fix config.lua'):format(model), type = 'error' })
-        print(('^1[cipher]^0 spawnCourierVan: model "%s" (hash %s) is not a valid streamed model'):format(tostring(model), tostring(hash)))
+        print(('^1[XS-CriminalTablet]^0 spawnCourierVan: model "%s" (hash %s) is not a valid streamed model'):format(tostring(model), tostring(hash)))
         return
     end
 
@@ -423,7 +423,7 @@ local function spawnCourierVan(vanSpawn, model, isLeader)
     courierVan = CreateVehicle(hash, vanSpawn.x, vanSpawn.y, vanSpawn.z, vanSpawn.w or 0.0, true, true)
     if not courierVan or courierVan == 0 then
         lib.notify({ description = 'Failed to spawn the delivery van — check the F8 console.', type = 'error' })
-        print('^1[cipher]^0 spawnCourierVan: CreateVehicle returned 0 — model likely failed to stream in time')
+        print('^1[XS-CriminalTablet]^0 spawnCourierVan: CreateVehicle returned 0 — model likely failed to stream in time')
         courierVan = nil
         return
     end
@@ -433,10 +433,10 @@ local function spawnCourierVan(vanSpawn, model, isLeader)
     SetVehicleHasBeenOwnedByPlayer(courierVan, true)
     SetVehicleNeedsToBeHotwired(courierVan, false)
     SetVehicleDoorsLocked(courierVan, 1)
-    print(('^2[cipher]^0 spawnCourierVan: spawned van entity %s at %s, %s, %s'):format(courierVan, vanSpawn.x, vanSpawn.y, vanSpawn.z))
+    print(('^2[XS-CriminalTablet]^0 spawnCourierVan: spawned van entity %s at %s, %s, %s'):format(courierVan, vanSpawn.x, vanSpawn.y, vanSpawn.z))
 
     local netId = NetworkGetNetworkIdFromEntity(courierVan)
-    lib.callback.await('cipher:tasks:registerVan', false, netId)
+    lib.callback.await('XS-CriminalTablet:tasks:registerVan', false, netId)
 end
 
 -- Quartermaster ped standing at the van — talking to him is what "loads"
@@ -463,7 +463,7 @@ local function spawnQuartermaster(coords, model, isLeader, onTalk)
     if hasTarget then
         local ok = pcall(function()
             exports.ox_target:addLocalEntity(quartermasterPed, {
-                { name = 'cipher_courier_quartermaster', label = 'Get the Package', icon = 'fas fa-comments',
+                { name = 'xs_courier_quartermaster', label = 'Get the Package', icon = 'fas fa-comments',
                   onSelect = onTalk },
             })
         end)
@@ -491,8 +491,8 @@ local function maybeTriggerCourierAmbush(chance, dropoff)
                 lib.notify({ description = "This van's hot — they spotted the package!", type = 'error', duration = 5000 })
                 Wait(3500)
                 if not courierVan or not DoesEntityExist(courierVan) then return end
-                AddRelationshipGroup('cipher_hitcontract')
-                local hostileGroup = GetHashKey('cipher_hitcontract')
+                AddRelationshipGroup('xs_hitcontract')
+                local hostileGroup = GetHashKey('xs_hitcontract')
                 SetRelationshipBetweenGroups(5, hostileGroup, `PLAYER`)
                 SetRelationshipBetweenGroups(5, `PLAYER`, hostileGroup)
                 for i = 1, 2 do
@@ -555,7 +555,7 @@ local function setupDropoffTarget(coords, model, isLeader, label, action)
     if hasTarget then
         local ok = pcall(function()
             exports.ox_target:addLocalEntity(dropoffPed, {
-                { name = 'cipher_dropoff_task', label = label, icon = 'fas fa-handshake',
+                { name = 'xs_dropoff_task', label = label, icon = 'fas fa-handshake',
                   onSelect = action },
             })
         end)
@@ -575,11 +575,11 @@ end
 
 local function doInfiltrate(holdSeconds)
     if lib.progressBar({ duration = (holdSeconds or 6) * 1000, label = 'Working the lock...', useWhileDead = false, canCancel = true }) then
-        doHeistStage('cipher:tasks:doInfiltrate')
+        doHeistStage('XS-CriminalTablet:tasks:doInfiltrate')
     end
 end
 
-RegisterNetEvent('cipher:client:taskUpdate', function(job)
+RegisterNetEvent('XS-CriminalTablet:client:taskUpdate', function(job)
     clearTaskBlip()
     if not job then
         clearAllTaskVisuals()
@@ -608,7 +608,7 @@ RegisterNetEvent('cipher:client:taskUpdate', function(job)
             -- should already be standing there when the van arrives.
             spawnDropoffPedOnly(job.dropoff, job.dropoffPedModel or 'g_m_y_lost_01', job.isLeader)
             spawnQuartermaster(job.vanSpawn, job.quartermasterModel or 'g_m_y_lost_01', job.isLeader, function()
-                local res = lib.callback.await('cipher:tasks:doPickupVan', false)
+                local res = lib.callback.await('XS-CriminalTablet:tasks:doPickupVan', false)
                 if res and not res.ok then lib.notify({ description = res.error or 'Failed', type = 'error' }) end
             end)
 
@@ -626,7 +626,7 @@ RegisterNetEvent('cipher:client:taskUpdate', function(job)
             setupVanBackTarget(courierVan, 'Open the Boot', function()
                 if lib.progressBar({ duration = 2200, label = 'Grabbing the package...', useWhileDead = false,
                                       canCancel = true, anim = { dict = 'pickup_object', clip = 'pickup_low' } }) then
-                    local res = lib.callback.await('cipher:tasks:doUnload', false)
+                    local res = lib.callback.await('XS-CriminalTablet:tasks:doUnload', false)
                     if res and not res.ok then lib.notify({ description = res.error or 'Failed', type = 'error' }) end
                 end
             end)
@@ -645,14 +645,14 @@ RegisterNetEvent('cipher:client:taskUpdate', function(job)
             setupDropoffTarget(job.dropoff, job.dropoffPedModel or 'g_m_y_lost_01', job.isLeader, 'Hand Off Package', function()
                 if lib.progressBar({ duration = 1800, label = 'Handing off the package...', useWhileDead = false,
                                       canCancel = true, anim = { dict = 'mp_common', clip = 'givetake1_a' } }) then
-                    local res = lib.callback.await('cipher:tasks:doCourierHandoff', false)
+                    local res = lib.callback.await('XS-CriminalTablet:tasks:doCourierHandoff', false)
                     if res and not res.ok then lib.notify({ description = res.error or 'Failed', type = 'error' }) end
                 end
             end)
         else -- return
             clearDropoffPed(); clearCarryProp()
             setupCourierTarget(job.vanSpawn, 'Return Van', job.radius, function()
-                local res = lib.callback.await('cipher:tasks:doReturnVan', false)
+                local res = lib.callback.await('XS-CriminalTablet:tasks:doReturnVan', false)
                 if res and not res.ok then lib.notify({ description = res.error or 'Failed', type = 'error' }) end
             end)
         end
@@ -674,9 +674,9 @@ RegisterNetEvent('cipher:client:taskUpdate', function(job)
         if job.stage == 'infiltrate' then
             label, action = 'Infiltrate', function() doInfiltrate(job.holdSeconds) end
         elseif job.stage == 'grab' then
-            label, action = 'Grab It', function() doHeistStage('cipher:tasks:doGrab') end
+            label, action = 'Grab It', function() doHeistStage('XS-CriminalTablet:tasks:doGrab') end
         else
-            label, action = 'Escape', function() doHeistStage('cipher:tasks:doEscape') end
+            label, action = 'Escape', function() doHeistStage('XS-CriminalTablet:tasks:doEscape') end
         end
         setupHeistTarget(job.point, label, job.radius, action)
 
@@ -713,24 +713,15 @@ RegisterNetEvent('cipher:client:taskUpdate', function(job)
     EndTextCommandSetBlipName(taskBlip)
 end)
 
--- Incoming task co-op invite -> ox_lib confirm dialog.
-RegisterNetEvent('cipher:client:taskCoopInvite', function(info)
-    local accepted = lib.alertDialog({
-        header = 'Crew Invite',
-        content = ('**%s** invited you to crew up on a task.\n\nAccept?'):format(info.fromName),
-        centered = true,
-        cancel = true,
-        labels = { confirm = 'Accept', cancel = 'Decline' },
-    })
-    if accepted == 'confirm' then
-        TriggerServerEvent('cipher:server:acceptTaskCoopInvite')
-    end
+-- Incoming task co-op invite -> in-device banner or ox_lib dialog.
+RegisterNetEvent('XS-CriminalTablet:client:taskCoopInvite', function(info)
+    Device.PromptInvite('task', 'Crew Invite', info.fromName, 'invited you to crew up on a task')
 end)
 
 -- Server tells the van's owner to clean it up once the job ends (complete,
 -- cancelled, or timed out) — netId-targeted so it works even if a fresh
 -- taskUpdate already cleared courierVan locally.
-RegisterNetEvent('cipher:client:taskCleanupVan', function(netId)
+RegisterNetEvent('XS-CriminalTablet:client:taskCleanupVan', function(netId)
     local veh = NetworkGetEntityFromNetworkId(netId)
     if veh and veh ~= 0 and DoesEntityExist(veh) then DeleteEntity(veh) end
     if courierVan == veh then courierVan = nil end
@@ -742,7 +733,7 @@ end)
 -- actually valid on this build, instead of guessing from config.lua and
 -- restarting blind. /testmodel <name> [ped]
 RegisterCommand('testmodel', function(_, args)
-    if not lib.callback.await('cipher:admin:checkAccess', false) then return end
+    if not lib.callback.await('XS-CriminalTablet:admin:checkAccess', false) then return end
     local name = args[1]
     if not name then
         lib.notify({ description = 'Usage: /testmodel <model_name> [ped]', type = 'error' })
@@ -769,13 +760,13 @@ RegisterCommand('testmodel', function(_, args)
 end, false)
 
 -- Crafting bench interaction now lives in client/crafting.lua as a
--- dedicated NUI panel (RegisterNetEvent('cipher:client:openCraftBench', ...)).
+-- dedicated NUI panel (RegisterNetEvent('XS-CriminalTablet:client:openCraftBench', ...)).
 
 -- Dealer interaction: rotating stock, server validates funds + gives
 -- the item. "This is what I got right now" — stock and prices change
 -- on Config.Dealer.rotateMinutes.
-RegisterNetEvent('cipher:client:talkToDealer', function()
-    local stock = lib.callback.await('cipher:dealer:getStock', false)
+RegisterNetEvent('XS-CriminalTablet:client:talkToDealer', function()
+    local stock = lib.callback.await('XS-CriminalTablet:dealer:getStock', false)
     if not stock or #stock == 0 then
         lib.notify({ description = "Nothing in stock right now — check back later.", type = 'inform' })
         return
@@ -788,7 +779,7 @@ RegisterNetEvent('cipher:client:talkToDealer', function()
             description = ('$%d'):format(s.price),
             icon = 'fas fa-bag-shopping',
             onSelect = function()
-                local res = lib.callback.await('cipher:dealer:buy', false, s.item)
+                local res = lib.callback.await('XS-CriminalTablet:dealer:buy', false, s.item)
                 if res and res.ok then
                     lib.notify({ description = ('Bought %s for $%d.'):format(s.label, res.price), type = 'success' })
                 else
@@ -798,20 +789,11 @@ RegisterNetEvent('cipher:client:talkToDealer', function()
         }
     end
 
-    lib.registerContext({ id = 'cipher_dealer', title = "What I got right now", options = options })
-    lib.showContext('cipher_dealer')
+    lib.registerContext({ id = 'xs_dealer', title = "What I got right now", options = options })
+    lib.showContext('xs_dealer')
 end)
 
--- Incoming gang invite -> ox_lib confirm dialog.
-RegisterNetEvent('cipher:client:gangInvite', function(info)
-    local accepted = lib.alertDialog({
-        header = 'Gang Invite',
-        content = ('**%s** invited you to join **%s**.\n\nAccept?'):format(info.from, info.gang),
-        centered = true,
-        cancel = true,
-        labels = { confirm = 'Accept', cancel = 'Decline' },
-    })
-    if accepted == 'confirm' then
-        TriggerServerEvent('cipher:server:acceptInvite')
-    end
+-- Incoming gang invite -> in-device banner or ox_lib dialog.
+RegisterNetEvent('XS-CriminalTablet:client:gangInvite', function(info)
+    Device.PromptInvite('gang', 'Gang Invite', info.from, ('invited you to join %s'):format(info.gang))
 end)

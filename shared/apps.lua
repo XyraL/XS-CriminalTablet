@@ -1,18 +1,18 @@
 -- ─────────────────────────────────────────────────────────────
 -- App registry
 -- The device is a shell. Each app registers itself here so the UI can
--- list it and route to it. This is what makes Cipher a platform:
+-- list it and route to it. This is what makes this a platform:
 -- ship "Dark Web Market", "Contracts Board", etc. later as new apps
 -- without touching the shell. Server owners enable/disable per app.
 -- ─────────────────────────────────────────────────────────────
-Cipher = Cipher or {}
-Cipher.Apps = {}
+XSTablet = XSTablet or {}
+XSTablet.Apps = {}
 
 -- Register an app.
 -- @param app table: { id, label, icon, enabled, requiresGang? }
-function Cipher.RegisterApp(app)
-    assert(app.id, 'Cipher app requires an id')
-    Cipher.Apps[app.id] = {
+function XSTablet.RegisterApp(app)
+    assert(app.id, 'App requires an id')
+    XSTablet.Apps[app.id] = {
         id = app.id,
         label = app.label or app.id,
         icon = app.icon or 'square',
@@ -25,9 +25,9 @@ end
 -- Returns a sorted list of enabled apps for the UI, filtered to what this
 -- specific player can actually see — gang-gated apps don't show at all
 -- (not even the rail icon) if they're not in one.
-function Cipher.GetEnabledApps(hasGang)
+function XSTablet.GetEnabledApps(hasGang)
     local list = {}
-    for _, app in pairs(Cipher.Apps) do
+    for _, app in pairs(XSTablet.Apps) do
         if app.enabled and (not app.requiresGang or hasGang) then list[#list + 1] = app end
     end
     table.sort(list, function(a, b) return a.order < b.order end)
@@ -37,7 +37,7 @@ end
 -- Gang Ops — requires being in a gang. Kept order 10 (lowest among
 -- gang-gated apps) so members still default into it; non-gang players
 -- never see it at all, so the lower order is moot for them.
-Cipher.RegisterApp({
+XSTablet.RegisterApp({
     id = 'gangops',
     label = 'Gang Ops',
     icon = 'users',
@@ -49,7 +49,7 @@ Cipher.RegisterApp({
 -- Car boosting — open to everyone, gang or not. Ordered after Gang Ops so
 -- it isn't the default tab for gang members, but is the only (and
 -- therefore default) tab for non-gang players.
-Cipher.RegisterApp({
+XSTablet.RegisterApp({
     id = 'boosting',
     label = 'Boosting',
     icon = 'car',
@@ -60,7 +60,7 @@ Cipher.RegisterApp({
 
 -- Blackmarket — anonymous world chat + handle-addressed DMs. Also
 -- gang-gated, even though the chat content itself isn't gang-specific.
-Cipher.RegisterApp({
+XSTablet.RegisterApp({
     id = 'blackmarket',
     label = 'Blackmarket',
     icon = 'comments',

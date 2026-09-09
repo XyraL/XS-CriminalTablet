@@ -23,7 +23,7 @@ local hasTarget = GetResourceState('ox_target') == 'started'
 
 local function spawnOne(p)
     if not IsModelValid(p.model) then
-        print(('^1[cipher]^0 placement "%s" has an invalid model (%s) — fix the model in config.lua and re-place it'):format(p.label, p.model))
+        print(('^1[XS-CriminalTablet]^0 placement "%s" has an invalid model (%s) — fix the model in config.lua and re-place it'):format(p.label, p.model))
         return
     end
     lib.requestModel(p.model)
@@ -43,24 +43,24 @@ local function spawnOne(p)
         vaultRows[placementKey(p)] = p
         if hasTarget then
             exports.ox_target:addLocalEntity(handle, {
-                { name = 'cipher_open_vault', label = 'Open Gang Vault', icon = 'fas fa-box',
-                  onSelect = function() TriggerServerEvent('cipher:server:openVault') end },
+                { name = 'xs_open_vault', label = 'Open Gang Vault', icon = 'fas fa-box',
+                  onSelect = function() TriggerServerEvent('XS-CriminalTablet:server:openVault') end },
             })
         end
     elseif p.kind == 'bench' then
         benchRows[placementKey(p)] = p
         if hasTarget then
             exports.ox_target:addLocalEntity(handle, {
-                { name = 'cipher_use_bench', label = 'Use ' .. (p.label or 'Bench'), icon = 'fas fa-screwdriver-wrench',
-                  onSelect = function() TriggerEvent('cipher:client:openCraftBench', p.label, vec3(p.x, p.y, p.z)) end },
+                { name = 'xs_use_bench', label = 'Use ' .. (p.label or 'Bench'), icon = 'fas fa-screwdriver-wrench',
+                  onSelect = function() TriggerEvent('XS-CriminalTablet:client:openCraftBench', p.label, vec3(p.x, p.y, p.z)) end },
             })
         end
     elseif p.kind == 'ped' then
         pedRows[placementKey(p)] = p
         if hasTarget then
             exports.ox_target:addLocalEntity(handle, {
-                { name = 'cipher_talk_dealer', label = 'Talk to ' .. (p.label or 'Dealer'), icon = 'fas fa-comments',
-                  onSelect = function() TriggerEvent('cipher:client:talkToDealer') end },
+                { name = 'xs_talk_dealer', label = 'Talk to ' .. (p.label or 'Dealer'), icon = 'fas fa-comments',
+                  onSelect = function() TriggerEvent('XS-CriminalTablet:client:talkToDealer') end },
             })
         end
     end
@@ -75,15 +75,15 @@ local function spawnAll(list)
         -- one bad model (e.g. a typo'd prop name) must not stop the rest
         -- of the gang's placements — especially the vault — from spawning.
         local ok, err = pcall(spawnOne, p)
-        if not ok then print(('^1[cipher]^0 failed to spawn placement "%s": %s'):format(p.label, err)) end
+        if not ok then print(('^1[XS-CriminalTablet]^0 failed to spawn placement "%s": %s'):format(p.label, err)) end
     end
 end
 
-RegisterNetEvent('cipher:client:placeablesUpdate', spawnAll)
+RegisterNetEvent('XS-CriminalTablet:client:placeablesUpdate', spawnAll)
 
 CreateThread(function()
     Wait(2500)
-    spawnAll(lib.callback.await('cipher:placeables:getAll', false))
+    spawnAll(lib.callback.await('XS-CriminalTablet:placeables:getAll', false))
 end)
 
 -- ── vault/dealer proximity prompts (fallback when ox_target isn't installed) ──
@@ -108,14 +108,14 @@ if not hasTarget then
 
             if vault then
                 if shown ~= 'vault' then lib.showTextUI('[E] Open Gang Vault'); shown = 'vault' end
-                if IsControlJustReleased(0, 38) then TriggerServerEvent('cipher:server:openVault') end
+                if IsControlJustReleased(0, 38) then TriggerServerEvent('XS-CriminalTablet:server:openVault') end
             elseif ped then
                 if shown ~= 'ped' then lib.showTextUI('[E] Talk to Dealer'); shown = 'ped' end
-                if IsControlJustReleased(0, 38) then TriggerEvent('cipher:client:talkToDealer') end
+                if IsControlJustReleased(0, 38) then TriggerEvent('XS-CriminalTablet:client:talkToDealer') end
             elseif bench then
                 if shown ~= 'bench' then lib.showTextUI('[E] Use ' .. (bench.label or 'Bench')); shown = 'bench' end
                 if IsControlJustReleased(0, 38) then
-                    TriggerEvent('cipher:client:openCraftBench', bench.label, vec3(bench.x, bench.y, bench.z))
+                    TriggerEvent('XS-CriminalTablet:client:openCraftBench', bench.label, vec3(bench.x, bench.y, bench.z))
                 end
             elseif shown then
                 lib.hideTextUI()
@@ -184,7 +184,7 @@ function Placeables.StartPlacement(kind, unlockId, model)
             local finalHeading = GetEntityHeading(ghost)
             DeleteEntity(ghost)
             lib.hideTextUI()
-            local res = lib.callback.await('cipher:placeables:place', false, kind, unlockId, finalCoords, finalHeading)
+            local res = lib.callback.await('XS-CriminalTablet:placeables:place', false, kind, unlockId, finalCoords, finalHeading)
             if res and res.ok then
                 lib.notify({ description = 'Placed.', type = 'success' })
             else

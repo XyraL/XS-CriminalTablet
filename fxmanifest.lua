@@ -2,10 +2,10 @@ fx_version 'cerulean'
 game 'gta5'
 lua54 'yes'
 
-name 'cipher'
-author 'you'
-description 'Cipher — modular encrypted criminal device. First app: Gang Ops.'
-version '1.0.1'
+name 'XS-CriminalTablet'
+author 'XyraL'
+description 'Modular criminal device for QBox/QBCore. Gangs, territory, rep, tasks, crafting, dealers and boosting.'
+version '1.0.2'
 
 -- Works on QBox (qbx_core) OR QBCore (qb-core). The bridge auto-detects.
 -- Shared deps both frameworks support cleanly:

@@ -21,11 +21,44 @@ end
 
 local function openDevice()
     if isOpen then return end
-    local snapshot = lib.callback.await('cipher:getSnapshot', false)
+    local snapshot = lib.callback.await('XS-CriminalTablet:getSnapshot', false)
     isOpen = true
     SetNuiFocus(true, true)
     SendNUIMessage({ action = 'open', data = snapshot })
     playDeviceAnim()
+end
+
+-- Invites. ox_lib's dialog draws underneath the device page while it's
+-- open, so an open device gets an in-page banner; a closed one gets the
+-- dialog. A banner still pending when the device closes falls back to
+-- the dialog so nothing is silently lost.
+Device = Device or {}
+local pendingInvite = nil
+local INVITE_ACCEPT = {
+    gang  = 'XS-CriminalTablet:server:acceptInvite',
+    task  = 'XS-CriminalTablet:server:acceptTaskCoopInvite',
+    boost = 'XS-CriminalTablet:server:acceptCoopInvite',
+}
+
+local function promptInviteDialog(inv)
+    local accepted = lib.alertDialog({
+        header = inv.title,
+        content = ('**%s** %s.\n\nAccept?'):format(inv.from, inv.detail),
+        centered = true,
+        cancel = true,
+        labels = { confirm = 'Accept', cancel = 'Decline' },
+    })
+    if accepted == 'confirm' then TriggerServerEvent(INVITE_ACCEPT[inv.kind]) end
+end
+
+function Device.PromptInvite(kind, title, from, detail)
+    local inv = { kind = kind, title = title, from = from or 'Someone', detail = detail }
+    if isOpen then
+        pendingInvite = inv
+        SendNUIMessage({ action = 'invite', data = inv })
+    else
+        promptInviteDialog(inv)
+    end
 end
 
 local function closeDevice()
@@ -34,9 +67,27 @@ local function closeDevice()
     SetNuiFocus(false, false)
     SendNUIMessage({ action = 'close' })
     stopDeviceAnim()
+    if pendingInvite then
+        local inv = pendingInvite
+        pendingInvite = nil
+        CreateThread(function() promptInviteDialog(inv) end)
+    end
 end
 
-RegisterNetEvent('cipher:client:openDevice', openDevice)
+RegisterNUICallback('inviteRespond', function(data, cb)
+    local inv = pendingInvite
+    pendingInvite = nil
+    if data and data.accept and inv and INVITE_ACCEPT[inv.kind] then
+        TriggerServerEvent(INVITE_ACCEPT[inv.kind])
+    end
+    cb({})
+end)
+
+RegisterNetEvent('XS-CriminalTablet:client:refresh', function()
+    if isOpen then SendNUIMessage({ action = 'refresh' }) end
+end)
+
+RegisterNetEvent('XS-CriminalTablet:client:openDevice', openDevice)
 
 RegisterNUICallback('close', function(_, cb)
     closeDevice()
@@ -46,65 +97,66 @@ end)
 -- Generic relay: the UI names a server callback + args; we await + return.
 -- Keeps the JS side tiny and the server the single source of truth.
 local allowed = {
-    ['cipher:getSnapshot']   = true,
-    ['cipher:invite']        = true,
-    ['cipher:kick']          = true,
-    ['cipher:setGrade']      = true,
-    ['cipher:bankDeposit']   = true,
-    ['cipher:bankWithdraw']  = true,
-    ['cipher:tasks:getAvailable'] = true,
-    ['cipher:tasks:accept']       = true,
-    ['cipher:tasks:cancel']       = true,
-    ['cipher:tasks:getStatus']        = true,
-    ['cipher:tasks:getAchievements']  = true,
-    ['cipher:tasks:getLeaderboard']   = true,
-    ['cipher:tasks:getCoopTasks']     = true,
-    ['cipher:tasks:getCrewStatus']    = true,
-    ['cipher:tasks:inviteCoop']       = true,
-    ['cipher:tasks:cancelCrew']       = true,
-    ['cipher:tasks:acceptCoop']       = true,
-    ['cipher:tasks:registerVan']      = true,
-    ['cipher:tasks:doPickupVan']      = true,
-    ['cipher:tasks:doUnload']         = true,
-    ['cipher:tasks:doCourierHandoff'] = true,
-    ['cipher:tasks:doReturnVan']      = true,
-    ['cipher:placeables:getAvailable'] = true,
-    ['cipher:placeables:remove']       = true,
-    ['cipher:dealer:getStatus']        = true,
-    ['cipher:dealer:contact']          = true,
-    ['cipher:chat:getMyHandle']        = true,
-    ['cipher:chat:setHandle']          = true,
-    ['cipher:chat:getWorldHistory']    = true,
-    ['cipher:chat:postWorld']          = true,
-    ['cipher:chat:getThreads']         = true,
-    ['cipher:chat:getThread']          = true,
-    ['cipher:chat:sendDM']             = true,
-    ['cipher:boosting:getStatus']      = true,
-    ['cipher:boosting:getLeaderboard'] = true,
-    ['cipher:boosting:accept']         = true,
-    ['cipher:boosting:cancel']         = true,
-    ['cipher:boosting:getAvailableVehicles'] = true,
-    ['cipher:boosting:getRecentActivity']    = true,
-    ['cipher:boosting:getAchievements']      = true,
-    ['cipher:boosting:getWanted']            = true,
-    ['cipher:boosting:getPerks']             = true,
-    ['cipher:boosting:buyPerk']              = true,
-    ['cipher:boosting:getCrewStatus']        = true,
-    ['cipher:boosting:inviteCoop']           = true,
-    ['cipher:boosting:cancelCrew']           = true,
-    ['cipher:boosting:acceptCoop']           = true,
-    ['cipher:gangperks:getTree']             = true,
-    ['cipher:gangperks:buyPerk']             = true,
-    ['cipher:bankGetLedger']                 = true,
+    ['XS-CriminalTablet:getSnapshot']   = true,
+    ['XS-CriminalTablet:players:search'] = true,
+    ['XS-CriminalTablet:invite']        = true,
+    ['XS-CriminalTablet:kick']          = true,
+    ['XS-CriminalTablet:setGrade']      = true,
+    ['XS-CriminalTablet:bankDeposit']   = true,
+    ['XS-CriminalTablet:bankWithdraw']  = true,
+    ['XS-CriminalTablet:tasks:getAvailable'] = true,
+    ['XS-CriminalTablet:tasks:accept']       = true,
+    ['XS-CriminalTablet:tasks:cancel']       = true,
+    ['XS-CriminalTablet:tasks:getStatus']        = true,
+    ['XS-CriminalTablet:tasks:getAchievements']  = true,
+    ['XS-CriminalTablet:tasks:getLeaderboard']   = true,
+    ['XS-CriminalTablet:tasks:getCoopTasks']     = true,
+    ['XS-CriminalTablet:tasks:getCrewStatus']    = true,
+    ['XS-CriminalTablet:tasks:inviteCoop']       = true,
+    ['XS-CriminalTablet:tasks:cancelCrew']       = true,
+    ['XS-CriminalTablet:tasks:acceptCoop']       = true,
+    ['XS-CriminalTablet:tasks:registerVan']      = true,
+    ['XS-CriminalTablet:tasks:doPickupVan']      = true,
+    ['XS-CriminalTablet:tasks:doUnload']         = true,
+    ['XS-CriminalTablet:tasks:doCourierHandoff'] = true,
+    ['XS-CriminalTablet:tasks:doReturnVan']      = true,
+    ['XS-CriminalTablet:placeables:getAvailable'] = true,
+    ['XS-CriminalTablet:placeables:remove']       = true,
+    ['XS-CriminalTablet:dealer:getStatus']        = true,
+    ['XS-CriminalTablet:dealer:contact']          = true,
+    ['XS-CriminalTablet:chat:getMyHandle']        = true,
+    ['XS-CriminalTablet:chat:setHandle']          = true,
+    ['XS-CriminalTablet:chat:getWorldHistory']    = true,
+    ['XS-CriminalTablet:chat:postWorld']          = true,
+    ['XS-CriminalTablet:chat:getThreads']         = true,
+    ['XS-CriminalTablet:chat:getThread']          = true,
+    ['XS-CriminalTablet:chat:sendDM']             = true,
+    ['XS-CriminalTablet:boosting:getStatus']      = true,
+    ['XS-CriminalTablet:boosting:getLeaderboard'] = true,
+    ['XS-CriminalTablet:boosting:accept']         = true,
+    ['XS-CriminalTablet:boosting:cancel']         = true,
+    ['XS-CriminalTablet:boosting:getAvailableVehicles'] = true,
+    ['XS-CriminalTablet:boosting:getRecentActivity']    = true,
+    ['XS-CriminalTablet:boosting:getAchievements']      = true,
+    ['XS-CriminalTablet:boosting:getWanted']            = true,
+    ['XS-CriminalTablet:boosting:getPerks']             = true,
+    ['XS-CriminalTablet:boosting:buyPerk']              = true,
+    ['XS-CriminalTablet:boosting:getCrewStatus']        = true,
+    ['XS-CriminalTablet:boosting:inviteCoop']           = true,
+    ['XS-CriminalTablet:boosting:cancelCrew']           = true,
+    ['XS-CriminalTablet:boosting:acceptCoop']           = true,
+    ['XS-CriminalTablet:gangperks:getTree']             = true,
+    ['XS-CriminalTablet:gangperks:buyPerk']             = true,
+    ['XS-CriminalTablet:bankGetLedger']                 = true,
 }
 
 -- Live chat pushes (not request/response, so they bypass the relay above
 -- and go straight to the NUI as their own message actions).
-RegisterNetEvent('cipher:client:chatWorldMessage', function(data)
+RegisterNetEvent('XS-CriminalTablet:client:chatWorldMessage', function(data)
     SendNUIMessage({ action = 'chatWorldMessage', data = data })
 end)
 
-RegisterNetEvent('cipher:client:chatDM', function(data)
+RegisterNetEvent('XS-CriminalTablet:client:chatDM', function(data)
     SendNUIMessage({ action = 'chatDM', data = data })
 end)
 

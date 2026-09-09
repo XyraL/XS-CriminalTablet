@@ -1,7 +1,7 @@
--- Cipher / Gang Ops schema
+-- XS-CriminalTablet / Gang Ops schema
 -- Import once into your server database.
 
-CREATE TABLE IF NOT EXISTS `cipher_gangs` (
+CREATE TABLE IF NOT EXISTS `xs_gangs` (
     `id`            INT             NOT NULL AUTO_INCREMENT,
     `name`          VARCHAR(64)     NOT NULL,
     `label`         VARCHAR(64)     NOT NULL,
@@ -18,27 +18,27 @@ CREATE TABLE IF NOT EXISTS `cipher_gangs` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Owned gang perks (Config.GangPerks) — permanent, gang-wide modifiers
--- bought with perk_points. Mirrors cipher_boost_perks' shape.
-CREATE TABLE IF NOT EXISTS `cipher_gang_perks` (
+-- bought with perk_points. Mirrors xs_boost_perks' shape.
+CREATE TABLE IF NOT EXISTS `xs_gang_perks` (
     `gang_id`       INT             NOT NULL,
     `perk_id`       VARCHAR(48)     NOT NULL,
     `bought_at`     TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (`gang_id`, `perk_id`),
     CONSTRAINT `fk_gangperk_gang` FOREIGN KEY (`gang_id`)
-        REFERENCES `cipher_gangs` (`id`) ON DELETE CASCADE
+        REFERENCES `xs_gangs` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `cipher_gang_ranks` (
+CREATE TABLE IF NOT EXISTS `xs_gang_ranks` (
     `gang_id`       INT             NOT NULL,
     `grade`         INT             NOT NULL,
     `name`          VARCHAR(48)     NOT NULL,
     `permissions`   LONGTEXT        NOT NULL,            -- json array or "*"
     PRIMARY KEY (`gang_id`, `grade`),
     CONSTRAINT `fk_ranks_gang` FOREIGN KEY (`gang_id`)
-        REFERENCES `cipher_gangs` (`id`) ON DELETE CASCADE
+        REFERENCES `xs_gangs` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `cipher_gang_members` (
+CREATE TABLE IF NOT EXISTS `xs_gang_members` (
     `gang_id`       INT             NOT NULL,
     `citizenid`     VARCHAR(64)     NOT NULL,
     `name`          VARCHAR(96)     NOT NULL,            -- cached display name
@@ -50,10 +50,10 @@ CREATE TABLE IF NOT EXISTS `cipher_gang_members` (
     PRIMARY KEY (`citizenid`),                           -- one gang per character
     KEY `idx_gang` (`gang_id`),
     CONSTRAINT `fk_member_gang` FOREIGN KEY (`gang_id`)
-        REFERENCES `cipher_gangs` (`id`) ON DELETE CASCADE
+        REFERENCES `xs_gangs` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `cipher_task_cooldowns` (
+CREATE TABLE IF NOT EXISTS `xs_task_cooldowns` (
     `citizenid`     VARCHAR(64)     NOT NULL,
     `task_id`       VARCHAR(48)     NOT NULL,
     `completed_at`  BIGINT          NOT NULL DEFAULT 0,  -- unix ms
@@ -61,10 +61,10 @@ CREATE TABLE IF NOT EXISTS `cipher_task_cooldowns` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Personal task rank — independent of gang membership (survives leaving/
--- joining a different gang), mirrors cipher_boost_stats' shape. XP here is
+-- joining a different gang), mirrors xs_boost_stats' shape. XP here is
 -- separate from the gang rep tasks also pay out; it only gates which task
 -- variants (Config.Tasks[*].minLevel) are available to you.
-CREATE TABLE IF NOT EXISTS `cipher_task_stats` (
+CREATE TABLE IF NOT EXISTS `xs_task_stats` (
     `citizenid`     VARCHAR(64)     NOT NULL,
     `name`          VARCHAR(96)     NOT NULL DEFAULT '',
     `xp`            INT             NOT NULL DEFAULT 0,
@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS `cipher_task_stats` (
 -- Zones are admin-assigned only — there is no in-world capture. A zone may
 -- be seeded from Config.Territories, or created entirely from the admin
 -- tablet (which also sets coords from the admin's current position).
-CREATE TABLE IF NOT EXISTS `cipher_territories` (
+CREATE TABLE IF NOT EXISTS `xs_territories` (
     `zone`          VARCHAR(48)     NOT NULL,
     `label`         VARCHAR(64)     NOT NULL DEFAULT '',
     `color`         INT             NOT NULL DEFAULT 0,
@@ -89,13 +89,13 @@ CREATE TABLE IF NOT EXISTS `cipher_territories` (
     PRIMARY KEY (`zone`),
     KEY `idx_holder` (`gang_id`),
     CONSTRAINT `fk_terr_gang` FOREIGN KEY (`gang_id`)
-        REFERENCES `cipher_gangs` (`id`) ON DELETE SET NULL
+        REFERENCES `xs_gangs` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Boss-placed world objects: tier-unlock benches/peds and the gang vault
 -- container. One row per (gang, kind, unlock_id) — re-placing updates the
 -- existing row rather than stacking duplicates.
-CREATE TABLE IF NOT EXISTS `cipher_gang_placements` (
+CREATE TABLE IF NOT EXISTS `xs_gang_placements` (
     `id`            INT             NOT NULL AUTO_INCREMENT,
     `gang_id`       INT             NOT NULL,
     `kind`          VARCHAR(16)     NOT NULL,            -- 'bench' | 'ped' | 'vault'
@@ -111,10 +111,10 @@ CREATE TABLE IF NOT EXISTS `cipher_gang_placements` (
     PRIMARY KEY (`id`),
     UNIQUE KEY `uniq_placement` (`gang_id`, `kind`, `unlock_id`),
     CONSTRAINT `fk_placement_gang` FOREIGN KEY (`gang_id`)
-        REFERENCES `cipher_gangs` (`id`) ON DELETE CASCADE
+        REFERENCES `xs_gangs` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `cipher_gang_logs` (
+CREATE TABLE IF NOT EXISTS `xs_gang_logs` (
     `id`            INT             NOT NULL AUTO_INCREMENT,
     `gang_id`       INT             NOT NULL,
     `message`       VARCHAR(255)    NOT NULL,
@@ -122,12 +122,12 @@ CREATE TABLE IF NOT EXISTS `cipher_gang_logs` (
     PRIMARY KEY (`id`),
     KEY `idx_gang_log` (`gang_id`),
     CONSTRAINT `fk_log_gang` FOREIGN KEY (`gang_id`)
-        REFERENCES `cipher_gangs` (`id`) ON DELETE CASCADE
+        REFERENCES `xs_gangs` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Dedicated treasury ledger (separate from the general activity log) for
 -- the Treasury tab's bank-statement-style transaction history.
-CREATE TABLE IF NOT EXISTS `cipher_gang_bank_log` (
+CREATE TABLE IF NOT EXISTS `xs_gang_bank_log` (
     `id`            INT             NOT NULL AUTO_INCREMENT,
     `gang_id`       INT             NOT NULL,
     `citizenid`     VARCHAR(64)     NOT NULL DEFAULT '',
@@ -138,13 +138,13 @@ CREATE TABLE IF NOT EXISTS `cipher_gang_bank_log` (
     PRIMARY KEY (`id`),
     KEY `idx_banklog_gang` (`gang_id`),
     CONSTRAINT `fk_banklog_gang` FOREIGN KEY (`gang_id`)
-        REFERENCES `cipher_gangs` (`id`) ON DELETE CASCADE
+        REFERENCES `xs_gangs` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Blackmarket chat: anonymous codename per character, a capped world feed,
 -- and DMs addressed by handle (never by citizenid) so identity never
 -- leaks through the chat UI itself.
-CREATE TABLE IF NOT EXISTS `cipher_chat_handles` (
+CREATE TABLE IF NOT EXISTS `xs_chat_handles` (
     `citizenid`     VARCHAR(64)     NOT NULL,
     `handle`        VARCHAR(32)     NOT NULL,
     `created_at`    TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -152,7 +152,7 @@ CREATE TABLE IF NOT EXISTS `cipher_chat_handles` (
     UNIQUE KEY `uniq_handle` (`handle`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `cipher_chat_world` (
+CREATE TABLE IF NOT EXISTS `xs_chat_world` (
     `id`            INT             NOT NULL AUTO_INCREMENT,
     `handle`        VARCHAR(32)     NOT NULL,
     `message`       VARCHAR(280)    NOT NULL,
@@ -160,7 +160,7 @@ CREATE TABLE IF NOT EXISTS `cipher_chat_world` (
     PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE IF NOT EXISTS `cipher_chat_dms` (
+CREATE TABLE IF NOT EXISTS `xs_chat_dms` (
     `id`            INT             NOT NULL AUTO_INCREMENT,
     `from_citizenid` VARCHAR(64)    NOT NULL,
     `to_citizenid`  VARCHAR(64)     NOT NULL,
@@ -177,7 +177,7 @@ CREATE TABLE IF NOT EXISTS `cipher_chat_dms` (
 -- Car boosting: fully standalone from gangs. One row per character —
 -- level/xp drive vehicle-tier unlocks, total_boosted drives the
 -- leaderboard, total_cash is just a stat (not used for anything mechanical).
-CREATE TABLE IF NOT EXISTS `cipher_boost_stats` (
+CREATE TABLE IF NOT EXISTS `xs_boost_stats` (
     `citizenid`     VARCHAR(64)     NOT NULL,
     `name`          VARCHAR(96)     NOT NULL DEFAULT '',  -- cached display name for the leaderboard
     `level`         INT             NOT NULL DEFAULT 1,
@@ -192,7 +192,7 @@ CREATE TABLE IF NOT EXISTS `cipher_boost_stats` (
 
 -- Owned perks (Config.Boosting.perks) — passive unlocks bought with
 -- perk_points, never consumed/used-up, just a permanent modifier.
-CREATE TABLE IF NOT EXISTS `cipher_boost_perks` (
+CREATE TABLE IF NOT EXISTS `xs_boost_perks` (
     `citizenid`     VARCHAR(64)     NOT NULL,
     `perk_id`       VARCHAR(48)     NOT NULL,
     `bought_at`     TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -202,7 +202,7 @@ CREATE TABLE IF NOT EXISTS `cipher_boost_perks` (
 -- Server-wide recent sells, shown on the Job tab. Capped to the most
 -- recent rows at query time (Config.Boosting.recentActivityLimit) — this
 -- table itself isn't pruned, just queried with a LIMIT.
-CREATE TABLE IF NOT EXISTS `cipher_boost_log` (
+CREATE TABLE IF NOT EXISTS `xs_boost_log` (
     `id`            INT             NOT NULL AUTO_INCREMENT,
     `name`          VARCHAR(96)     NOT NULL,
     `vehicle_label` VARCHAR(64)     NOT NULL,
@@ -213,15 +213,15 @@ CREATE TABLE IF NOT EXISTS `cipher_boost_log` (
 
 -- Safe to re-run on a DB that already has these tables from an earlier
 -- version of this file (MySQL 8 / MariaDB 10.0+ required for IF NOT EXISTS).
-ALTER TABLE `cipher_gang_members` ADD COLUMN IF NOT EXISTS `rep` INT NOT NULL DEFAULT 0;
-ALTER TABLE `cipher_gang_members` ADD COLUMN IF NOT EXISTS `dues_paid_at` BIGINT NOT NULL DEFAULT 0;
-ALTER TABLE `cipher_territories` ADD COLUMN IF NOT EXISTS `label` VARCHAR(64) NOT NULL DEFAULT '';
-ALTER TABLE `cipher_territories` ADD COLUMN IF NOT EXISTS `color` INT NOT NULL DEFAULT 0;
-ALTER TABLE `cipher_territories` ADD COLUMN IF NOT EXISTS `income` INT NOT NULL DEFAULT 0;
-ALTER TABLE `cipher_territories` ADD COLUMN IF NOT EXISTS `coord_x` FLOAT NULL;
-ALTER TABLE `cipher_territories` ADD COLUMN IF NOT EXISTS `coord_y` FLOAT NULL;
-ALTER TABLE `cipher_territories` ADD COLUMN IF NOT EXISTS `coord_z` FLOAT NULL;
-ALTER TABLE `cipher_territories` ADD COLUMN IF NOT EXISTS `assigned_at` BIGINT NOT NULL DEFAULT 0;
-ALTER TABLE `cipher_boost_stats` ADD COLUMN IF NOT EXISTS `perk_points` INT NOT NULL DEFAULT 0;
-ALTER TABLE `cipher_gangs` ADD COLUMN IF NOT EXISTS `perk_points` INT NOT NULL DEFAULT 0;
-ALTER TABLE `cipher_gang_members` ADD COLUMN IF NOT EXISTS `last_seen` BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE `xs_gang_members` ADD COLUMN IF NOT EXISTS `rep` INT NOT NULL DEFAULT 0;
+ALTER TABLE `xs_gang_members` ADD COLUMN IF NOT EXISTS `dues_paid_at` BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE `xs_territories` ADD COLUMN IF NOT EXISTS `label` VARCHAR(64) NOT NULL DEFAULT '';
+ALTER TABLE `xs_territories` ADD COLUMN IF NOT EXISTS `color` INT NOT NULL DEFAULT 0;
+ALTER TABLE `xs_territories` ADD COLUMN IF NOT EXISTS `income` INT NOT NULL DEFAULT 0;
+ALTER TABLE `xs_territories` ADD COLUMN IF NOT EXISTS `coord_x` FLOAT NULL;
+ALTER TABLE `xs_territories` ADD COLUMN IF NOT EXISTS `coord_y` FLOAT NULL;
+ALTER TABLE `xs_territories` ADD COLUMN IF NOT EXISTS `coord_z` FLOAT NULL;
+ALTER TABLE `xs_territories` ADD COLUMN IF NOT EXISTS `assigned_at` BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE `xs_boost_stats` ADD COLUMN IF NOT EXISTS `perk_points` INT NOT NULL DEFAULT 0;
+ALTER TABLE `xs_gangs` ADD COLUMN IF NOT EXISTS `perk_points` INT NOT NULL DEFAULT 0;
+ALTER TABLE `xs_gang_members` ADD COLUMN IF NOT EXISTS `last_seen` BIGINT NOT NULL DEFAULT 0;

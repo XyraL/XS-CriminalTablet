@@ -35,7 +35,7 @@ function Drugs.Sell(src, item)
     if (count or 0) < 1 then return false, "you don't have that" end
 
     exports.ox_inventory:RemoveItem(src, item, 1)
-    Framework.AddMoney(src, Config.DrugSelling.account, def.price, 'cipher-drug-sale')
+    Framework.AddMoney(src, Config.DrugSelling.account, def.price, 'xs-drug-sale')
     lastSoldAt[src] = now
 
     local cid = Framework.GetCitizenId(src)
@@ -48,11 +48,11 @@ function Drugs.Sell(src, item)
     return true, def.price
 end
 
-lib.callback.register('cipher:drugs:getSellable', function(src)
+lib.callback.register('XS-CriminalTablet:drugs:getSellable', function(src)
     return Drugs.GetSellable(src)
 end)
 
-lib.callback.register('cipher:drugs:sell', function(src, item)
+lib.callback.register('XS-CriminalTablet:drugs:sell', function(src, item)
     local ok, res = Drugs.Sell(src, item)
     return { ok = ok, error = not ok and res or nil, price = ok and res or nil }
 end)
