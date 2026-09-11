@@ -1,3 +1,25 @@
+-- Patching the registrar rather than each call site gives every NUI callback
+-- in the resource two guarantees, including any added later:
+--
+-- 1. Each handler runs in its own thread. FiveM will not dispatch the next
+--    NUI callback while the current one is still yielding.
+-- 2. A nil payload is sent as `false`. cb(nil) sends no response body at all,
+--    leaving the page's fetch pending forever.
+if not IsDuplicityVersion() and type(RegisterNUICallback) == 'function' then
+    local _registerNUI = RegisterNUICallback
+
+    RegisterNUICallback = function(name, handler)
+        return _registerNUI(name, function(data, cb)
+            CreateThread(function()
+                handler(data, function(payload, ...)
+                    if payload == nil then payload = false end
+                    cb(payload, ...)
+                end)
+            end)
+        end)
+    end
+end
+
 -- ─────────────────────────────────────────────────────────────
 -- Framework bridge
 -- Auto-detects QBox (qbx_core) or QBCore (qb-core) and exposes ONE API

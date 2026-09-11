@@ -5,7 +5,7 @@ lua54 'yes'
 name 'XS-CriminalTablet'
 author 'XyraL'
 description 'Modular criminal device for QBox/QBCore. Gangs, territory, rep, tasks, crafting, dealers and boosting.'
-version '1.0.2'
+version '1.1.0'
 
 -- Works on QBox (qbx_core) OR QBCore (qb-core). The bridge auto-detects.
 -- Shared deps both frameworks support cleanly:
