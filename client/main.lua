@@ -6,6 +6,75 @@ CreateThread(function()
     if Config.Debug then print('^2[XS-CriminalTablet]^0 client ready') end
 end)
 
+-- ── animation safety ───────────────────────────────────────
+-- ox_lib's progressBar THROWS on a dictionary the build does not have,
+-- which takes the whole action down with it — no animation, no progress
+-- bar, no server call, no error the player can act on. Check first and
+-- hand back only something that exists.
+XSAnim = XSAnim or {}
+
+-- ox_target may still be starting when this file is parsed, so asking
+-- once at load time and caching the answer is how every target option in
+-- the resource quietly stopped existing. Ask when you need to know.
+XSTarget = XSTarget or {}
+function XSTarget.Ready()
+    return GetResourceState('ox_target') == 'started'
+end
+
+-- Returns the first { dict, clip } whose dictionary exists, or nil.
+function XSAnim.Pick(candidates)
+    for _, c in ipairs(candidates or {}) do
+        if c.dict and c.dict ~= '' and DoesAnimDictExist(c.dict) then
+            return { dict = c.dict, clip = c.clip }
+        end
+    end
+    return nil
+end
+
+-- progressBar with the anim checked first and the busy flag guaranteed.
+--
+-- ox_lib raises LocalPlayer.state.invBusy for the duration of a bar and
+-- lowers it at the end. When the bar throws, that second half never runs
+-- and the flag stays up forever — ox_inventory then refuses to open with
+-- "cannot open inventory (is busy)" until the player reconnects. We set
+-- that flag by calling progressBar, so we clean it up.
+--
+-- Pass 'anims' (a candidate list) instead of 'anim' to have the first
+-- dictionary that actually exists picked for you.
+function XSAnim.Progress(opts)
+    opts = opts or {}
+    if opts.anims then
+        opts.anim = XSAnim.Pick(opts.anims)
+        opts.anims = nil
+    end
+    if opts.anim and opts.anim.dict and not DoesAnimDictExist(opts.anim.dict) then
+        print(('^3[XS-CriminalTablet]^0 anim dict "%s" does not exist - running without it'):format(opts.anim.dict))
+        opts.anim = nil
+    end
+
+    local ok, result = pcall(lib.progressBar, opts)
+    if ok then return result end
+
+    LocalPlayer.state:set('invBusy', false, true)
+    print('^1[XS-CriminalTablet]^0 progress bar failed: ' .. tostring(result))
+    return false
+end
+
+-- Escape hatch. A bar from ANY resource that dies mid-run leaves the
+-- player unable to open their inventory until they reconnect; this puts
+-- them back without one. It only lowers flags, so the worst it can do is
+-- end a bar that was already broken.
+RegisterCommand('xsunstick', function()
+    LocalPlayer.state:set('invBusy', false, true)
+    LocalPlayer.state:set('invOpen', false, true)
+    SetNuiFocusKeepInput(false)
+    SetNuiFocus(false, false)
+    ClearPedTasks(PlayerPedId())
+    pcall(function() lib.hideTextUI() end)
+    pcall(function() lib.cancelProgress() end)
+    lib.notify({ description = 'Unstuck. Try your inventory again.', type = 'success' })
+end, false)
+
 -- ox_inventory client-side usable item: item.client.export = 'XS-CriminalTablet.useDevice'
 exports('useDevice', function(data, slot)
     TriggerEvent('XS-CriminalTablet:client:openDevice')
@@ -42,7 +111,7 @@ end)
 -- spawns an entity (killPed/escortPed/dropoffPed) — every crew member's
 -- client independently runs this same handler, so spawning unconditionally
 -- would create duplicate networked peds.
-local hasTarget = GetResourceState('ox_target') == 'started'
+local function hasTarget() return XSTarget.Ready() end
 local taskBlip = nil
 local carryProp = nil
 local killPed = nil
@@ -137,15 +206,33 @@ end
 -- PlaceEntityOnGroundProperly isn't registered as a Lua global on every
 -- build — falls back to a manual GetGroundZFor_3dCoord snap so a missing
 -- native can't crash the spawn.
-local function snapToGround(entity)
+-- Put an entity on the floor and hold it there.
+--
+-- The old version fired the moment the ped was created, before the
+-- collision under it had streamed in — the placement quietly did nothing
+-- and the freeze that followed locked the ped mid-air. Wait for the
+-- ground to exist before asking the engine to put anything on it.
+local function snapToGround(entity, freeze)
     if not entity or entity == 0 then return end
-    local ok = pcall(function() PlaceEntityOnGroundProperly(entity, true) end)
-    if ok then return end
-    local coords = GetEntityCoords(entity)
-    local found, groundZ = GetGroundZFor_3dCoord(coords.x, coords.y, coords.z + 5.0, false)
-    if found then
-        SetEntityCoords(entity, coords.x, coords.y, groundZ + 0.02, false, false, false, true)
+
+    local c = GetEntityCoords(entity)
+    RequestCollisionAtCoord(c.x, c.y, c.z)
+    local waited = 0
+    while not HasCollisionLoadedAroundEntity(entity) and waited < 3000 do
+        Wait(50)
+        waited = waited + 50
     end
+
+    -- PlaceEntityOnGroundProperly returns a boolean, not 1/0.
+    local ok, placed = pcall(PlaceEntityOnGroundProperly, entity, true)
+    if not (ok and placed) then
+        local found, groundZ = GetGroundZFor_3dCoord(c.x, c.y, c.z + 10.0, false)
+        if found then
+            SetEntityCoords(entity, c.x, c.y, groundZ + 0.02, false, false, false, true)
+        end
+    end
+
+    if freeze then FreezeEntityPosition(entity, true) end
 end
 
 -- Single proximity+[E] loop backing whichever interaction ox_target isn't
@@ -245,7 +332,7 @@ local function setupPickupTarget(coords)
     clearPickupZone()
     clearFallbackPrompt()
     local zoneOk = false
-    if hasTarget then
+    if hasTarget() then
         local ok, id = pcall(function()
             return exports.ox_target:addSphereZone({
                 coords = coords, radius = 1.2, debug = false,
@@ -322,7 +409,7 @@ local function setupHeistTarget(coords, label, radius, onArrive)
     clearHeistZone()
     clearFallbackPrompt()
     local zoneOk = false
-    if hasTarget then
+    if hasTarget() then
         local ok, id = pcall(function()
             return exports.ox_target:addSphereZone({
                 coords = coords, radius = radius or 2.5, debug = false,
@@ -342,7 +429,7 @@ local function setupCourierTarget(coords, label, radius, onArrive)
     clearCourierZone()
     clearFallbackPrompt()
     local zoneOk = false
-    if hasTarget then
+    if hasTarget() then
         local ok, id = pcall(function()
             return exports.ox_target:addSphereZone({
                 coords = coords, radius = radius or 6.0, debug = false,
@@ -368,7 +455,7 @@ local function setupVanBackTarget(van, label, onArrive)
     if not van or not DoesEntityExist(van) then return end
 
     local zoneOk = false
-    if hasTarget then
+    if hasTarget() then
         local ok = pcall(function()
             exports.ox_target:addLocalEntity(van, {
                 { name = 'xs_courier_boot', label = label, icon = 'fas fa-box-open',
@@ -423,7 +510,7 @@ local function spawnCourierVan(vanSpawn, model, isLeader)
     courierVan = CreateVehicle(hash, vanSpawn.x, vanSpawn.y, vanSpawn.z, vanSpawn.w or 0.0, true, true)
     if not courierVan or courierVan == 0 then
         lib.notify({ description = 'Failed to spawn the delivery van — check the F8 console.', type = 'error' })
-        print('^1[XS-CriminalTablet]^0 spawnCourierVan: CreateVehicle returned 0 — model likely failed to stream in time')
+        print('^1[XS-CriminalTablet]^0 spawnCourierVan: CreateVehicle returned 0 - model likely failed to stream in time')
         courierVan = nil
         return
     end
@@ -450,17 +537,21 @@ local function spawnQuartermaster(coords, model, isLeader, onTalk)
         return
     end
     lib.requestModel(model)
-    local offset = GetOffsetFromCoordInWorldCoords(coords.x, coords.y, coords.z, coords.w or 0.0, 1.5, 1.5, 0.0)
-    quartermasterPed = CreatePed(4, model, offset.x, offset.y, coords.z, 0.0, true, true)
-    snapToGround(quartermasterPed)
+    -- There is no GetOffsetFrom*Coord*InWorldCoords — only the entity one.
+    -- Stand the quartermaster a step to the side of the marker by hand.
+    local h = math.rad(coords.w or 0.0)
+    local ox, oy = 1.5, 1.5
+    local px = coords.x + (ox * math.cos(h) - oy * math.sin(h))
+    local py = coords.y + (ox * math.sin(h) + oy * math.cos(h))
+    quartermasterPed = CreatePed(4, model, px, py, coords.z, coords.w or 0.0, true, true)
     SetEntityAsMissionEntity(quartermasterPed, true, true)
     SetEntityInvincible(quartermasterPed, true)
     SetBlockingOfNonTemporaryEvents(quartermasterPed, true)
-    FreezeEntityPosition(quartermasterPed, true)
+    snapToGround(quartermasterPed, true)
     TaskStartScenarioInPlace(quartermasterPed, 'WORLD_HUMAN_STAND_IMPATIENT', 0, true)
 
     local zoneOk = false
-    if hasTarget then
+    if hasTarget() then
         local ok = pcall(function()
             exports.ox_target:addLocalEntity(quartermasterPed, {
                 { name = 'xs_courier_quartermaster', label = 'Get the Package', icon = 'fas fa-comments',
@@ -470,13 +561,16 @@ local function spawnQuartermaster(coords, model, isLeader, onTalk)
         zoneOk = ok
     end
     if not zoneOk then
-        fallbackPrompt = { coords = vec3(offset.x, offset.y, coords.z), label = 'Get the Package', action = onTalk }
+        -- Prompt where the ped actually ended up, not where we asked for
+        -- it — snapToGround may have moved it down onto the pavement.
+        local at = GetEntityCoords(quartermasterPed)
+        fallbackPrompt = { coords = at, label = 'Get the Package', action = onTalk }
     end
 end
 
 -- Ambush is purely atmospheric flavor — server already rolled the chance
 -- into ambushChance being non-zero on this job; surviving or losing the
--- fight doesn't gate completion, same trust level as Boosting's guards.
+-- fight does not gate completion — it is flavour, not a gate.
 -- Framed as "they were already waiting near the dropoff" rather than a
 -- random highway encounter: it triggers on proximity to the dropoff, with
 -- a heads-up warning the moment it fires, never a blind sucker-punch.
@@ -528,13 +622,12 @@ local function spawnDropoffPedOnly(coords, model, isLeader)
     end
     lib.requestModel(model)
     dropoffPed = CreatePed(4, model, coords.x, coords.y, coords.z, coords.w or 0.0, true, true)
-    snapToGround(dropoffPed)
     -- Without this, OneSync can clean the ped up as "too far from any
     -- player" before whoever's driving the van actually gets there.
     SetEntityAsMissionEntity(dropoffPed, true, true)
     SetEntityInvincible(dropoffPed, true)
     SetBlockingOfNonTemporaryEvents(dropoffPed, true)
-    FreezeEntityPosition(dropoffPed, true)
+    snapToGround(dropoffPed, true)
     TaskStartScenarioInPlace(dropoffPed, 'WORLD_HUMAN_STAND_IMPATIENT', 0, true)
 end
 
@@ -552,7 +645,7 @@ local function setupDropoffTarget(coords, model, isLeader, label, action)
     end
 
     local zoneOk = false
-    if hasTarget then
+    if hasTarget() then
         local ok = pcall(function()
             exports.ox_target:addLocalEntity(dropoffPed, {
                 { name = 'xs_dropoff_task', label = label, icon = 'fas fa-handshake',
@@ -566,7 +659,7 @@ local function setupDropoffTarget(coords, model, isLeader, label, action)
     end
 end
 
--- Car boosting is its own standalone system now — see client/boosting.lua.
+
 
 local function doHeistStage(callbackName)
     local res = lib.callback.await(callbackName, false)
@@ -574,7 +667,7 @@ local function doHeistStage(callbackName)
 end
 
 local function doInfiltrate(holdSeconds)
-    if lib.progressBar({ duration = (holdSeconds or 6) * 1000, label = 'Working the lock...', useWhileDead = false, canCancel = true }) then
+    if XSAnim.Progress({ duration = (holdSeconds or 6) * 1000, label = 'Working the lock...', useWhileDead = false, canCancel = true }) then
         doHeistStage('XS-CriminalTablet:tasks:doInfiltrate')
     end
 end
@@ -624,8 +717,8 @@ RegisterNetEvent('XS-CriminalTablet:client:taskUpdate', function(job)
             clearQuartermaster(); clearCourierZone()
             maybeTriggerCourierAmbush(job.ambushChance, job.dropoff)
             setupVanBackTarget(courierVan, 'Open the Boot', function()
-                if lib.progressBar({ duration = 2200, label = 'Grabbing the package...', useWhileDead = false,
-                                      canCancel = true, anim = { dict = 'pickup_object', clip = 'pickup_low' } }) then
+                if XSAnim.Progress({ duration = 2200, label = 'Grabbing the package...', useWhileDead = false,
+                                      canCancel = true, anims = { { dict = 'pickup_object', clip = 'pickup_low' } } }) then
                     local res = lib.callback.await('XS-CriminalTablet:tasks:doUnload', false)
                     if res and not res.ok then lib.notify({ description = res.error or 'Failed', type = 'error' }) end
                 end
@@ -643,8 +736,8 @@ RegisterNetEvent('XS-CriminalTablet:client:taskUpdate', function(job)
             clearCourierZone()
             if job.carryProp then attachCarryProp(job.carryProp) else clearCarryProp() end
             setupDropoffTarget(job.dropoff, job.dropoffPedModel or 'g_m_y_lost_01', job.isLeader, 'Hand Off Package', function()
-                if lib.progressBar({ duration = 1800, label = 'Handing off the package...', useWhileDead = false,
-                                      canCancel = true, anim = { dict = 'mp_common', clip = 'givetake1_a' } }) then
+                if XSAnim.Progress({ duration = 1800, label = 'Handing off the package...', useWhileDead = false,
+                                      canCancel = true, anims = { { dict = 'mp_common', clip = 'givetake1_a' } } }) then
                     local res = lib.callback.await('XS-CriminalTablet:tasks:doCourierHandoff', false)
                     if res and not res.ok then lib.notify({ description = res.error or 'Failed', type = 'error' }) end
                 end
@@ -757,6 +850,61 @@ RegisterCommand('testmodel', function(_, args)
     SetTimeout(6000, function()
         if DoesEntityExist(handle) then DeleteEntity(handle) end
     end)
+end, false)
+
+-- ── bulk model check ──
+-- /checkmodels validates every model config.lua actually references in
+-- one pass and prints only the broken ones. Beats spawning a dozen props
+-- by hand before a test, and an invalid prop otherwise fails silently at
+-- placement time with nothing but a console line.
+RegisterCommand('checkmodels', function()
+    if not lib.callback.await('XS-CriminalTablet:admin:checkAccess', false) then return end
+
+    local seen, checks = {}, {}
+    local function add(model, where)
+        if not model or model == '' or seen[model] then return end
+        seen[model] = true
+        checks[#checks + 1] = { model = model, where = where }
+    end
+
+    for tier, entries in pairs(Config.TierUnlocks) do
+        for _, u in ipairs(entries) do add(u.model, ('TierUnlocks.%s / %s'):format(tier, u.id)) end
+    end
+    add(Config.Territory.walls.model, 'Territory.walls')
+    for i, m in ipairs(Config.Vault.levelModels or {}) do add(m, ('Vault.levelModels[%d]'):format(i)) end
+    add(Config.Medic.station and Config.Medic.station.model, 'Medic.station.model')
+    add(Config.Graffiti.anim and Config.Graffiti.anim.prop, 'Graffiti.anim.prop')
+    add(Config.Dealer.pedModel, 'Dealer.pedModel')
+    add(Config.TestMode.defenderModel, 'TestMode.defenderModel')
+    for _, v in ipairs(Config.Garage.adminGrantModels or {}) do add(v.model, 'Garage.adminGrantModels') end
+    for _, t in ipairs(Config.Tasks) do
+        add(t.carryProp, ('Tasks.%s carryProp'):format(t.id))
+        add(t.pedModel, ('Tasks.%s pedModel'):format(t.id))
+        add(t.dropoffPedModel, ('Tasks.%s dropoffPedModel'):format(t.id))
+        add(t.quartermasterModel, ('Tasks.%s quartermasterModel'):format(t.id))
+        add(t.vanModel, ('Tasks.%s vanModel'):format(t.id))
+    end
+
+    local bad = {}
+    for _, c in ipairs(checks) do
+        if not IsModelValid(GetHashKey(c.model)) then bad[#bad + 1] = c end
+    end
+
+    print(('^3[XS-CriminalTablet]^0 checked %d model(s) from config.lua'):format(#checks))
+    if #bad == 0 then
+        print('^2[XS-CriminalTablet]^0 all valid on this build')
+        lib.notify({ description = ('All %d models are valid.'):format(#checks), type = 'success' })
+        return
+    end
+
+    for _, c in ipairs(bad) do
+        print(('^1[XS-CriminalTablet]^0   INVALID  %-26s  (%s)'):format(c.model, c.where))
+    end
+    lib.notify({
+        description = ('%d of %d models are invalid — see the F8 console.'):format(#bad, #checks),
+        type = 'error',
+        duration = 8000,
+    })
 end, false)
 
 -- Crafting bench interaction now lives in client/crafting.lua as a

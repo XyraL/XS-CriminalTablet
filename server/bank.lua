@@ -21,16 +21,17 @@ function Bank.Deposit(src, amount)
     Framework.RemoveMoney(src, Config.Bank.account, amount, 'gang-deposit')
     gang.bank = gang.bank + amount
     MySQL.update('UPDATE xs_gangs SET bank = bank + ? WHERE id = ?', { amount, gang.id })
-    Gangs.Log(gang.id, ('%s deposited $%d'):format(Framework.GetName(src), amount))
+    Gangs.Log(gang.id, ('%s deposited $%d'):format(Framework.GetName(src), amount), 'economy')
     logTransaction(gang.id, src, 'deposit', amount)
     Discord.Send('economy', 'Deposit', ('%s deposited $%d into %s'):format(Framework.GetName(src), amount, gang.label), Discord.Color.good)
+    Gangs.Broadcast(gang.id, 'treasury', {})
     return true, gang.bank
 end
 
 function Bank.Withdraw(src, amount)
     amount = math.floor(tonumber(amount) or 0)
     if amount <= 0 then return false, 'invalid amount' end
-    if not Gangs.HasPerm(src, 'manage_bank') then return false, 'no permission' end
+    if not Gangs.HasPerm(src, 'bank_withdraw') then return false, 'no permission' end
     local gang = Gangs.GetBySource(src)
     if not gang then return false, 'no gang' end
     if gang.bank < amount then return false, 'gang bank too low' end
@@ -38,9 +39,10 @@ function Bank.Withdraw(src, amount)
     gang.bank = gang.bank - amount
     MySQL.update('UPDATE xs_gangs SET bank = bank - ? WHERE id = ?', { amount, gang.id })
     Framework.AddMoney(src, Config.Bank.account, amount, 'gang-withdraw')
-    Gangs.Log(gang.id, ('%s withdrew $%d'):format(Framework.GetName(src), amount))
+    Gangs.Log(gang.id, ('%s withdrew $%d'):format(Framework.GetName(src), amount), 'economy')
     logTransaction(gang.id, src, 'withdraw', amount)
     Discord.Send('economy', 'Withdrawal', ('%s withdrew $%d from %s'):format(Framework.GetName(src), amount, gang.label), Discord.Color.warn)
+    Gangs.Broadcast(gang.id, 'treasury', {})
     return true, gang.bank
 end
 

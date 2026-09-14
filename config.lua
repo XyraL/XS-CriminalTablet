@@ -2,22 +2,30 @@ Config = {}
 
 -- ─────────────────────────────────────────────────────────────
 -- Device
+-- This tablet is gang-only. Every app on it requires gang membership —
+-- a player without a gang gets a locked terminal screen and nothing else.
 -- ─────────────────────────────────────────────────────────────
 Config.Debug = false
 
--- Item that opens the device (register this in ox_inventory items).
+-- Item that opens the device. Register it in your ox_inventory items.lua
+-- with client = { export = 'XS-CriminalTablet.useDevice' }.
 Config.DeviceItem = 'xs_tablet'
 
--- Command to open the device (useful for testing without the item).
+-- Command to open the device. Handy for testing without the item — set
+-- OpenCommandNeedsItem to true on a live server so the command can't be
+-- used to skip carrying one.
 Config.OpenCommand = 'gangops'
+Config.OpenCommandNeedsItem = false
+
+-- Shown on the locked screen when someone with no gang opens the tablet.
+-- Point it wherever your server takes gang applications.
+Config.NoGangMessage = 'Gangs are formed by staff. Apply on Discord to get one set up for your crew.'
 
 -- ─────────────────────────────────────────────────────────────
 -- Blackmarket chat
 -- Anonymous codename per character (e.g. "ShadowFox-A1B2"), generated once
 -- and persisted — never tied to gang label, so even gang affiliation stays
--- hidden. Open to anyone holding the tablet, gang or not: world chat is a
--- shared trading-floor feed, DMs are addressed by handle (never citizenid)
--- since that's the only identity anyone has.
+-- hidden behind the handle.
 -- ─────────────────────────────────────────────────────────────
 Config.Chat = {
     enabled = true,
@@ -36,12 +44,11 @@ Config.Chat = {
 
 -- ─────────────────────────────────────────────────────────────
 -- Discord webhooks
--- Three separate channels by audience — leave any blank to disable it.
+-- Leave any blank to disable that category.
 --   admin:    every action taken through /admintablet (the audit trail)
 --   gang:     structural lifecycle — founded, disbanded, boss changed
---   economy:  player-driven money movement — deposits, withdrawals,
---             dealer purchases (NOT admin overrides, those already show
---             in the admin log)
+--   economy:  deposits, withdrawals, unlock and upgrade purchases
+--   war:      captures, raids, wars, stash loots
 -- Get a webhook URL from a Discord channel: Edit Channel > Integrations
 -- > Webhooks > New Webhook > Copy URL.
 -- ─────────────────────────────────────────────────────────────
@@ -49,14 +56,14 @@ Config.Discord = {
     adminWebhook = '',
     gangWebhook = '',
     economyWebhook = '',
+    warWebhook = '',
     botName = 'XyraL',
 }
 
 -- ─────────────────────────────────────────────────────────────
 -- Admin tablet
--- A separate NUI view for staff: gang CRUD, rep/notoriety/bank
--- overrides, territory reassignment. No physical item — just a command,
--- gated by an ACE permission. Grant it in server.cfg, e.g.:
+-- Staff-only NUI: gang CRUD, rank editor, turf drawing, graffiti library,
+-- war control. No physical item — a command gated by an ACE permission:
 --   add_ace group.admin xs-criminaltablet.admin allow
 --   add_principal identifier.fivem:1234 group.admin
 -- ─────────────────────────────────────────────────────────────
@@ -65,112 +72,126 @@ Config.AdminAce = 'xs-criminaltablet.admin'
 
 -- ─────────────────────────────────────────────────────────────
 -- Ranks & permissions
--- Higher grade = more authority. Grade 0 is the entry rank.
--- Permissions are checked by key throughout the server code.
+-- The permission vocabulary lives in shared/permissions.lua (26 of them,
+-- grouped). Bosses build their own ladder per gang in-game; this is only
+-- the template applied when a gang is first created.
+--
+-- Ranks are name + permissions only. There is no payroll: the crew bank
+-- pays for unlocks and upgrades, not wages.
 -- ─────────────────────────────────────────────────────────────
-Config.Permissions = {
-    'invite',       -- invite new members
-    'kick',         -- remove members
-    'promote',      -- change member grades
-    'manage_bank',  -- withdraw gang funds (any member can deposit, no permission needed)
-    'manage_vault', -- access shared vault/armory
-    'place_objects', -- place/move crafting benches, peds, and the vault container
-    'manage_perks',  -- spend the gang's perk points
-    -- Disbanding and territory assignment are admin-only — no in-game permission for either.
-}
-
--- Default rank ladder applied when a gang is created.
--- Owners can rename ranks per-gang later; this is just the template.
 Config.DefaultRanks = {
-    [0] = { name = 'Prospect',    permissions = {} },
-    [1] = { name = 'Soldier',     permissions = { 'manage_vault' } },
-    [2] = { name = 'Lieutenant',  permissions = { 'invite', 'manage_vault' } },
-    [3] = { name = 'Underboss',   permissions = { 'invite', 'kick', 'promote', 'manage_vault', 'manage_bank' } },
-    [4] = { name = 'Boss',        permissions = '*' }, -- '*' = all permissions, including place_objects
+    [0] = { name = 'Prospect', permissions = {} },
+    [1] = { name = 'Soldier', permissions = {
+        'vault_open', 'garage_take', 'garage_store', 'accept_contracts', 'spray_graffiti',
+    } },
+    [2] = { name = 'Lieutenant', permissions = {
+        'invite', 'vault_open', 'garage_take', 'garage_store', 'accept_contracts',
+        'spray_graffiti', 'capture_territory', 'view_analytics',
+    } },
+    [3] = { name = 'Underboss', permissions = {
+        'invite', 'kick', 'promote', 'demote', 'bank_withdraw', 'bank_ledger',
+        'vault_open', 'garage_take', 'garage_store', 'garage_delete',
+        'place_objects', 'remove_objects', 'accept_contracts', 'spray_graffiti',
+        'manage_graffiti', 'capture_territory', 'start_raid', 'manage_motd',
+        'view_analytics',
+    } },
+    [4] = { name = 'Boss', permissions = '*' }, -- '*' = every permission
 }
 
+-- Base member cap. Upgrades and perks raise it from here.
 Config.MaxMembers = 30
 
+-- How many ranks a gang may have on its ladder at once.
+Config.MaxRanks = 10
+
 -- ─────────────────────────────────────────────────────────────
--- Gangs (admin-defined only — there is no in-game "create gang" flow).
--- To add a gang: add an entry here, set `ensure XS-CriminalTablet` to restart (or
--- run the server's `XS-CriminalTablet` resource restart), and the gang is created/
--- updated automatically. `boss` is the citizenid who starts as Boss.
--- Renaming the label or changing `boss` here updates the DB on the next
--- restart; removing an entry does NOT delete the gang (do that manually
--- if you really mean to).
+-- Gangs
+-- Optional first-boot seed only. Everything after that is managed live
+-- from the admin tablet — creating, colouring, renaming, boss changes,
+-- member caps. Removing an entry here does NOT delete the gang.
+-- `color` is a hex string; it drives the tablet accent, map blips,
+-- territory shading and the gang's default graffiti tint.
 -- ─────────────────────────────────────────────────────────────
 Config.Gangs = {
     -- ['ballas'] = {
     --     label = 'Ballas',
+    --     color = '#8b5cf6',
     --     boss = 'ABC12345',       -- citizenid
     --     territory = 'grove',     -- optional: starting zone, must exist in Config.Territories
     -- },
 }
 
+-- Swatches offered in the admin colour picker. Any hex works — this is
+-- just the quick palette.
+Config.GangColors = {
+    '#e5484d', '#f5a524', '#ffd60a', '#30d158', '#2dd4bf',
+    '#38bdf8', '#6366f1', '#8b5cf6', '#ec4899', '#f97316',
+    '#a3e635', '#94a3b8',
+}
+
+-- Mirror membership into the framework's own gang field so other
+-- resources (jobs, doors, dispatch) see it. Off by default — turn it on
+-- only if your framework's gangs aren't already managed elsewhere.
+Config.SyncFrameworkGang = false
+
 -- ─────────────────────────────────────────────────────────────
--- Notoriety
--- A gang-wide reputation meter. No idle decay — rep only ever drops from
--- the friendly-fire penalty below (or an admin adjustment). Tiers gate
--- bench unlocks, recipe unlocks, and zone size.
+-- Rep
+-- Gang-wide reputation. No idle decay — it only drops from the
+-- friendly-fire penalty, losing turf or a war, or an admin adjustment.
+-- Tiers gate unlocks, recipes and which zones a gang may contest.
 -- ─────────────────────────────────────────────────────────────
-Config.Notoriety = {
-    max = 10000,
+Config.Rep = {
+    max = 50000,
     tiers = {
-        { name = 'Unknown',   min = 0 },
-        { name = 'Local',     min = 1000 },
-        { name = 'Feared',    min = 3500 },
-        { name = 'Notorious', min = 7000 },
+        { name = 'Unknown',     min = 0 },
+        { name = 'Local',       min = 1000 },
+        { name = 'Feared',      min = 3500 },
+        { name = 'Notorious',   min = 7000 },
+        { name = 'Untouchable', min = 15000 },
     },
-    -- Rep lost by a member who kills a fellow gang member. Detected via the
-    -- victim's own client reporting their death + killer — see
-    -- server/notoriety.lua's 'XS-CriminalTablet:server:reportGangKill'.
     friendlyFirePenalty = 100,
-    -- How much notoriety various actions grant. Other resources can add to
-    -- this via the exported AddNotoriety(gangId, amount, reason). Task,
-    -- drug-sale, and admin-adjustment rewards live with their own configs
-    -- (Config.Tasks, Config.DrugSelling) — this is for anything else.
+    -- Other resources can feed this via
+    -- exports['XS-CriminalTablet']:AddRep(gangId, amount, reason)
     rewards = {
         member_recruited = 50,
+        zone_captured    = 300,
+        zone_lost        = -150,
+        raid_won         = 500,
+        raid_lost        = -200,
+        war_won          = 1200,
+        war_lost         = -400,
+        graffiti_sprayed = 15,
+        graffiti_covered = 25,   -- covering a RIVAL's tag pays more than a blank wall
     },
 }
 
 -- ─────────────────────────────────────────────────────────────
 -- Gang levels
--- A more granular prestige number + title layered ON TOP of the same
--- notoriety value the 4 broad tiers already use — tiers keep gating
--- benches/recipes/zone size exactly as before, this is purely additive.
--- Crossing a level threshold awards perkPoints, spent on Config.GangPerks.
+-- A granular prestige number + title layered on the SAME rep value
+-- the broad tiers use. Crossing a level awards perk points.
 -- ─────────────────────────────────────────────────────────────
 Config.GangLevels = {
-    { level = 1, repNeeded = 0,    title = 'Crew',        perkPoints = 0 },
-    { level = 2, repNeeded = 250,  title = 'Outfit',      perkPoints = 1 },
-    { level = 3, repNeeded = 750,  title = 'Syndicate',   perkPoints = 1 },
-    { level = 4, repNeeded = 1500, title = 'Cartel',      perkPoints = 1 },
-    { level = 5, repNeeded = 3000, title = 'Family',      perkPoints = 2 },
-    { level = 6, repNeeded = 5000, title = 'Empire',      perkPoints = 2 },
-    { level = 7, repNeeded = 7500, title = 'Dynasty',     perkPoints = 2 },
-    { level = 8, repNeeded = 10000, title = 'Untouchable', perkPoints = 3 },
+    { level = 1,  repNeeded = 0,     title = 'Crew',        perkPoints = 0 },
+    { level = 2,  repNeeded = 250,   title = 'Outfit',      perkPoints = 1 },
+    { level = 3,  repNeeded = 750,   title = 'Syndicate',   perkPoints = 1 },
+    { level = 4,  repNeeded = 1500,  title = 'Cartel',      perkPoints = 1 },
+    { level = 5,  repNeeded = 3000,  title = 'Family',      perkPoints = 2 },
+    { level = 6,  repNeeded = 5000,  title = 'Empire',      perkPoints = 2 },
+    { level = 7,  repNeeded = 7500,  title = 'Dynasty',     perkPoints = 2 },
+    { level = 8,  repNeeded = 11000, title = 'Untouchable', perkPoints = 3 },
+    { level = 9,  repNeeded = 16000, title = 'Kingdom',     perkPoints = 3 },
+    { level = 10, repNeeded = 24000, title = 'Legacy',      perkPoints = 4 },
 }
 
 -- ─────────────────────────────────────────────────────────────
 -- Gang perk tree
--- Permanent, gang-wide modifiers bought with perk_points — Boss-only
--- (the 'manage_perks' permission, granted to Boss by default via '*').
--- No inventory items, nothing consumed. Three branches, each a chain of
--- tiers — tier N requires tier N-1 in that SAME branch already owned, so
--- it reads as a real tree (vertical chains), not a flat shopping list.
--- Effects stack as you buy further up a branch.
---   vault: slotsBonus / weightBonusPct
---   members: maxMembersBonus
---   bench: craftTimePct (negative = faster), bonusOutputChance (%),
---          tierBoost (1 = treat the gang as one tier higher for which
---          recipes are unlocked at the bench, on top of its real tier)
+-- Permanent, gang-wide modifiers bought with perk_points (earned by
+-- levelling). Four branches, each a chain — tier N needs tier N-1 in that
+-- same branch. Effects stack as you buy up a branch.
 -- ─────────────────────────────────────────────────────────────
 Config.GangPerks = {
     vault = {
-        label = 'Vault',
-        icon = 'fa-vault',
+        label = 'Vault', icon = 'fa-vault', order = 1,
         tiers = {
             { id = 'vault_1', label = 'Reinforced Vault', description = '+25 slots, +25% weight capacity',
               cost = 1, slotsBonus = 25, weightBonusPct = 25 },
@@ -181,8 +202,7 @@ Config.GangPerks = {
         },
     },
     members = {
-        label = 'Recruitment',
-        icon = 'fa-users',
+        label = 'Recruitment', icon = 'fa-users', order = 2,
         tiers = {
             { id = 'members_1', label = 'Open Doors', description = '+10 max members',
               cost = 1, maxMembersBonus = 10 },
@@ -193,8 +213,7 @@ Config.GangPerks = {
         },
     },
     bench = {
-        label = 'Workshop',
-        icon = 'fa-screwdriver-wrench',
+        label = 'Workshop', icon = 'fa-screwdriver-wrench', order = 3,
         tiers = {
             { id = 'bench_1', label = 'Quality Tools', description = '-20% crafting time',
               cost = 1, craftTimePct = -20 },
@@ -204,78 +223,611 @@ Config.GangPerks = {
               cost = 3, tierBoost = 1 },
         },
     },
+    war = {
+        label = 'Warfare', icon = 'fa-crosshairs', order = 4,
+        tiers = {
+            { id = 'war_1', label = 'Street Discipline', description = '+15% capture speed on rival turf',
+              cost = 1, captureSpeedPct = 15 },
+            { id = 'war_2', label = 'Entrenched', description = '+25% defence weight when your own turf is contested',
+              cost = 2, defenceWeightPct = 25 },
+            { id = 'war_3', label = 'Warchest', description = '+20% cash taken from a won raid',
+              cost = 3, raidCutPct = 20 },
+        },
+    },
 }
 
--- How long since a member's last tablet open before the roster flags them
--- as inactive (purely visual — doesn't kick or affect anything mechanical).
-Config.GangInactivityDays = 7
+-- ─────────────────────────────────────────────────────────────
+-- Treasury upgrades
+-- Bought with the gang's MONEY, not perk points — so there are two
+-- separate currencies: perk points come from levelling, upgrades come
+-- from actually banking cash. Each upgrade is a ladder: buy level 1
+-- before level 2, and the cost climbs.
+-- Effect keys: maxMembersBonus / vaultSlotsBonus / vaultWeightBonusPct /
+-- garageSlotsBonus / raidRewardPct / captureSpeedPct
+-- ─────────────────────────────────────────────────────────────
+Config.Upgrades = {
+    {
+        id = 'roster', label = 'Roster Expansion', icon = 'fa-user-plus',
+        description = 'Room for more bodies on the books.',
+        levels = {
+            { cost = 25000,  maxMembersBonus = 5 },
+            { cost = 60000,  maxMembersBonus = 10 },
+            { cost = 140000, maxMembersBonus = 20 },
+        },
+    },
+    {
+        id = 'vault', label = 'Vault Expansion', icon = 'fa-boxes-stacked',
+        description = 'More shelves, and heavier ones.',
+        levels = {
+            { cost = 30000,  vaultSlotsBonus = 25, vaultWeightBonusPct = 20 },
+            { cost = 75000,  vaultSlotsBonus = 50, vaultWeightBonusPct = 40 },
+            { cost = 165000, vaultSlotsBonus = 75, vaultWeightBonusPct = 60 },
+        },
+    },
+    {
+        id = 'garage', label = 'Garage Expansion', icon = 'fa-warehouse',
+        description = 'More bays for gang vehicles.',
+        levels = {
+            { cost = 20000,  garageSlotsBonus = 3 },
+            { cost = 55000,  garageSlotsBonus = 6 },
+            { cost = 120000, garageSlotsBonus = 12 },
+        },
+    },
+    {
+        id = 'warchest', label = 'War Chest', icon = 'fa-sack-dollar',
+        description = 'A bigger cut out of every raid you win.',
+        levels = {
+            { cost = 45000,  raidRewardPct = 15 },
+            { cost = 110000, raidRewardPct = 30 },
+            { cost = 240000, raidRewardPct = 50 },
+        },
+    },
+    {
+        id = 'runners', label = 'Street Runners', icon = 'fa-person-running',
+        description = 'Faster captures — your people know the blocks.',
+        levels = {
+            { cost = 35000, captureSpeedPct = 10 },
+            { cost = 90000, captureSpeedPct = 20 },
+        },
+    },
+}
 
 -- ─────────────────────────────────────────────────────────────
 -- Territory
--- There is no in-world capture and no passive income — holding a zone is
--- prestige/visual only. Zones are assigned to a gang entirely through the
--- admin tablet — including setting a zone's coords to the admin's current
--- position. This table is just an optional seed for zones you want to
--- exist on first boot; admins can also create zones live without ever
--- touching this file.
+-- Zones are OWNED, never neutral. Staff draw a zone for a specific crew and
+-- it stays theirs until staff move it. Players cannot take turf off each
+-- other — a rival standing on your block builds a visible share of it and
+-- nothing more. There is no passive income either: turf is prestige, rep
+-- and the right to build on it, never a money printer.
+--
+-- Zones are polygons drawn live in-game with the admin creator (walk the
+-- corners, or drop a quick square). Config.Territories is only a first-boot
+-- seed; a seeded zone stays hidden from players until staff assign it to a
+-- crew in the admin tablet.
 -- ─────────────────────────────────────────────────────────────
-Config.ZoneRadius = 60.0  -- base radius of the map blip circle, in meters (at Unknown tier)
-Config.ZoneRadiusGrowthPerTier = 20.0  -- added per tier the HOLDING gang has climbed — purely visual
-Config.ZoneRadiusMaxTier = 'Feared'  -- zone size stops growing past this tier (Notorious is capped at the same size)
+Config.Territory = {
+    -- Turf on the PAUSE MAP. Off means the only place anyone sees who
+    -- holds what is the tablet — no radius circles, no crew markers, no
+    -- reading the whole city's politics off the minimap before you have
+    -- logged into anything.
+    worldBlips = false,
 
-Config.Territories = {
-    grove = {
-        label = 'Grove Street',
-        coords = vec3(-100.0, -1900.0, 25.0),
-        color = 2,                  -- blip color
+    -- ── Ownership ──
+    -- There are no neutral zones. A zone exists because staff drew it FOR a
+    -- specific crew, and it stays that crew's block until staff move it.
+    -- Nothing a player does takes turf off anyone.
+    --
+    -- ── Influence ──
+    -- What a rival CAN do is build a visible SHARE of a block by standing in
+    -- it: "Ballas 68% · Vagos 22%". That split shows on the map, the turf
+    -- card and the in-world HUD. It is pressure and a talking point, never a
+    -- countdown to losing the zone — a rival tops out at rivalInfluenceCap.
+    rivalInfluenceCap = 60,     -- most a rival can reach on someone else's block
+
+    influenceSeconds = 150,     -- seconds for ONE person to move influence 0 -> 100
+    influenceDecayPerMinute = 0.5, -- share a gang bleeds per minute with nobody in the zone (0 = never)
+    tickMs = 1000,              -- how often the server re-scores every occupied zone
+    minPresence = 1,            -- bodies needed inside to shift anything
+    perExtraMember = 0.45,      -- each additional body adds this much of a person
+    holderWeight = 1.25,        -- the holding crew defends its own block slightly better
+
+    -- A gang must be at least this tier to push influence onto rival turf.
+    -- Stops brand-new one-man crews painting the map on day one.
+    minTierToContest = 'Local',
+    -- Warn the holding crew when a rival first starts building share on
+    -- their turf, so they can actually go and stand on it.
+    alertOnContest = true,
+    -- Gang-locked zones: a zone tied to a gang is private to that gang —
+    -- only its members (and admins) see the blip and 3D marker, and only
+    -- they can interact with what is placed inside it.
+    gangLocked = true,
+    -- Optional barrier walls spawned along a held zone's edge. Purely
+    -- decorative cover — they do not block anyone from entering.
+    walls = {
+        enabled = false,
+        model = 'prop_barrier_work05',
+        spacing = 6.0,     -- metres between wall props along the perimeter
+        maxProps = 40,     -- hard cap per zone so a huge polygon can't flood the world
     },
-    docks = {
-        label = 'Elysian Docks',
-        coords = vec3(110.0, -3000.0, 6.0),
-        color = 38,
+    -- Fallback radius used for zones that have a centre but no polygon yet
+    -- (e.g. seeded from Config.Territories below, or created with the
+    -- quick "square at my position" button).
+    defaultRadius = 60.0,
+    defaultSquareSize = 80.0,
+}
+
+-- Empty on purpose. Draw every zone on the map in the admin tablet —
+-- this list only exists as a first-boot seed for owners who would rather
+-- define turf in a file, and anything you add here is created once and
+-- then owned by the database.
+--
+--   grove = { label = 'Grove Street', coords = vec3(-100.0, -1900.0, 25.0), color = 2 },
+--
+-- `color` is a legacy GTA blip colour, used only when the holder has no
+-- hex colour of its own.
+Config.Territories = {}
+
+-- ─────────────────────────────────────────────────────────────
+-- Tier unlocks
+-- Everything a gang can eventually place in the world. Reaching a tier
+-- makes that tier's entries placeable by anyone with 'place_objects' —
+-- nothing ever spawns on its own. Each entry needs a stable `id`: it's
+-- how the gang's chosen position is remembered in the DB.
+--
+-- `kind` decides what the placed thing DOES:
+--   hq      — the crew's home point. Gang blip, radial spawn anchor, and
+--             where the airdrop-style countdowns and war staging read from.
+--   vault   — the shared ox_inventory stash container.
+--   safe    — the raidable cash stash. This is what a rival loots after
+--             winning a war, so a gang that places one is opting into risk.
+--   garage  — the gang vehicle garage point.
+--   medic   — the unlocked gang medic station.
+--   bench   — a crafting bench (recipes gate themselves by tier).
+--   task    — a contract drop point the contracts board can route to.
+--   prop    — pure decoration, no interaction.
+--
+-- Model names are plain strings, not backtick hash literals: placements
+-- round-trip through a VARCHAR column, and a backtick literal compiles to
+-- a number that gets silently stringified into garbage on the way.
+-- Verify any model you add with /testmodel before relying on it.
+-- ─────────────────────────────────────────────────────────────
+-- `price` is what the crew pays OUT OF THE GANG BANK to unlock the entry
+-- before they can place it. These are only the defaults — staff set the
+-- real prices live in the admin tablet's Pricing tab, and those overrides
+-- win. Set a price to 0 to make an unlock free the moment its tier lands.
+Config.TierUnlocks = {
+    Unknown = {
+        { id = 'hq_sign',        kind = 'hq',     model = 'prop_laptop_01a',    label = 'Crew Laptop',    price = 0 },
+        { id = 'gang_vault',     kind = 'vault',  model = 'prop_toolchest_05',  label = 'Crew Locker',    price = 15000 },
     },
-    vinewood = {
-        label = 'Vinewood Hills',
-        coords = vec3(120.0, 560.0, 184.0),
-        color = 5,
+    Local = {
+        { id = 'local_crafting_bench', kind = 'bench', model = 'prop_tool_bench02', label = 'Crafting Bench', price = 25000 },
+        { id = 'gang_garage',    kind = 'garage', model = 'prop_toolchest_04',  label = 'Garage Point',   price = 40000 },
+        { id = 'gang_safe',      kind = 'safe',   model = 'p_v_43_safe_s',      label = 'Crew Safe',      price = 30000 },
+    },
+    Feared = {
+        { id = 'contract_drop',  kind = 'task',   model = 'prop_box_ammo04a',   label = 'Contract Drop',  price = 20000 },
+        { id = 'gate_barrier',   kind = 'prop',   model = 'prop_barrier_work05', label = 'Roadblock',     price = 5000 },
+    },
+    -- Nothing at the top two tiers out of the box. Decoration was cut on
+    -- purpose: every unlock left here DOES something. Add your own the
+    -- same way — `kind = 'prop'` is pure scenery and always safe.
+    Notorious = {},
+    Untouchable = {},
+}
+
+-- ─────────────────────────────────────────────────────────────
+-- Placement rules
+-- Where a gang is allowed to build. The HQ can go anywhere — it's the
+-- crew's home and a brand-new gang holds no turf yet. Everything else has
+-- to sit either inside a zone the gang holds, or close to its own HQ, so
+-- a crew's property is always somewhere they can actually defend.
+-- ─────────────────────────────────────────────────────────────
+Config.Placement = {
+    -- Turn this off to let gangs build literally anywhere.
+    requireZoneOrHq = true,
+    -- How far from the placed HQ still counts as "at base".
+    hqBuildRadius = 60.0,
+    -- How far the placing player may stand from the ghost prop. This is
+    -- the server-side bound check on a client-reported position.
+    maxPlaceDistance = 6.0,
+}
+
+-- ─────────────────────────────────────────────────────────────
+-- Gang garage
+-- Vehicles stored against the gang, not a person. Pulled out at the
+-- placed Garage Point. Slot count scales with the garage upgrade + perks.
+-- ─────────────────────────────────────────────────────────────
+Config.Garage = {
+    enabled = true,
+    baseSlots = 4,
+    spawnRadius = 12.0,    -- how far from the garage point a vehicle may be stored/taken
+    -- Plate prefix for gang vehicles. Kept short so the generated plate
+    -- still fits GTA's 8-character limit.
+    platePrefix = 'XS',
+    -- Hand the puller keys through whatever your server uses. Both common
+    -- QBox/QBCore key resources are tried; anything unknown is a no-op and
+    -- the vehicle simply spawns unlocked.
+    giveKeys = true,
+    -- The garage is somewhere the crew PARKS. There is no stock list of
+    -- cars to hand out — members store vehicles they already have and
+    -- pull them back out here.
+    --
+    -- Staff can still gift one from the admin tablet by typing a model
+    -- name. Anything listed here just becomes a shortcut in that box:
+    --
+    --   { model = 'sultan', label = 'Sultan' },
+    adminGrantModels = {},
+}
+
+-- ─────────────────────────────────────────────────────────────
+-- Graffiti
+-- Gang tagging. A gang's library is curated by STAFF — admins add art to
+-- a gang from the admin tablet (catalogue entries or a custom image URL),
+-- and members spray whatever their gang has been given. Members can also
+-- compose styled text or draw freehand in the studio, which the server
+-- stores as the gang's own art.
+--
+-- Custom images are loaded by URL inside the NUI and rendered in-world
+-- through a DUI texture, so the URL has to be reachable from the client's
+-- browser — a direct link to the image file, not a page that shows it.
+-- ─────────────────────────────────────────────────────────────
+Config.Graffiti = {
+    enabled = true,
+    -- How far a tag renders. Lower this if you put a lot of them out.
+    renderDistance = 45.0,
+    -- Max tags one gang may have standing at once. Spraying past the cap
+    -- replaces that gang's oldest tag rather than refusing.
+    maxPerGang = 25,
+    -- Server-wide cap so the world can't fill up.
+    maxTotal = 300,
+    -- Seconds the spray animation takes.
+    sprayDuration = 6,
+    -- How far in front of the camera a wall counts as "aimed at".
+    aimDistance = 6.0,
+    -- The tagging animation. Swap the dict/clip for whatever your server
+    -- streams; a dict that won't load just means no animation, never a
+    -- stuck spray. Leave dict blank to skip the animation entirely.
+    anim = {
+        -- Tried in order; the first dictionary that streams is used. Put
+        -- your preferred one at the top. If none of them load, spraying
+        -- still works, it just has no animation and says so in the console.
+        candidates = {
+            { dict = 'switch@franklin@lamar_tagging_wall', clip = 'lamar_tagging_loop_lamar' },
+            { dict = 'anim@amb@nightclub@peds@',           clip = 'rcmme_amanda1ig_2' },
+            { dict = 'missheistfbi3b_ig7',                 clip = 'lift_fibagent_loop' },
+            { dict = 'amb@world_human_bum_wash@male@high@base', clip = 'base' },
+        },
+        flag = 49,
+        -- Prop held in the right hand while spraying. Blank for none.
+        prop = 'prop_cs_spray_can',
+        -- Paint coming out of the can.
+        --
+        -- GTA has no spray-paint particle, so this is a small puff tinted
+        -- to the colour going on the wall. 'ent_sht_steam' reads as water
+        -- up close — swap it for anything you like, or set enabled=false
+        -- and rely on the animation alone.
+        -- Off by default: a non-looped burst plays out its own lifetime,
+        -- so the last puff always outlasts the progress bar by a beat,
+        -- and nothing in the base game actually looks like paint.
+        ptfx = {
+            enabled = false,
+            asset = 'core',
+            name = 'ent_sht_steam',
+            scale = 0.25,
+            alpha = 0.65,
+            intervalMs = 160,
+        },
+    },
+    -- Needs the can item in inventory. Leave blank to require nothing.
+    requiredItem = 'spraycan',
+    consumeItem = true,
+    -- Only allow spraying inside a zone the gang holds. Off by default —
+    -- tagging rival turf is half the point.
+    heldZonesOnly = false,
+    -- Spraying over a rival gang's tag removes theirs. Pays the bigger
+    -- Config.Rep.rewards.graffiti_covered reward.
+    allowCovering = true,
+    coverRadius = 2.5,
+    -- Tags older than this are swept automatically (0 = never expire).
+    expiryDays = 0,
+    -- How far off the wall the tag sits, in metres. Too small and it
+    -- z-fights or disappears into the geometry; too large and it floats.
+    surfaceOffset = 0.05,
+    -- Default plate size in metres, and the range members can scale to.
+    defaultWidth = 2.4,
+    defaultHeight = 1.6,
+    minScale = 0.5,
+    maxScale = 2.0,
+    -- The stock catalogue every gang starts with. Admins assign extras
+    -- per gang from the admin tablet. `art` is either a built-in studio
+    -- preset id or a direct image URL.
+    -- Empty on purpose. Issue art per crew from the admin tablet instead,
+    -- where you can hand a gang its own images. Anything listed here is
+    -- offered to every gang on the server:
+    --
+    --   { id = 'tag_classic', label = 'Classic Tag', art = 'preset:classic' },
+    --
+    -- `art` is a built-in studio preset (classic, bubble, stencil, drip)
+    -- or a direct image URL.
+    catalogue = {},
+    -- Fonts offered in the studio's text mode.
+    -- Every font here needs a matching class in web/tag.html, which is
+    -- what actually paints the wall. Adding one means editing both.
+    -- Every font here needs a matching class in web/tag.html, which is
+    -- what actually paints the wall, and its family in that page's font
+    -- link. tools/check-fonts is not a thing; the three are kept in step
+    -- by hand, so add to all three or the tag falls back to a plain face.
+    fonts = {
+        { id = 'marker',    label = 'Marker',        css = "'Permanent Marker', cursive" },
+        { id = 'spray',     label = 'Spray Can',     css = "'Rubik Spray Paint', cursive" },
+        { id = 'drip',      label = 'Wet Paint',     css = "'Rubik Wet Paint', cursive" },
+        { id = 'bubble',    label = 'Bubble',        css = "'Rubik Bubbles', cursive" },
+        { id = 'hatch',     label = 'Marker Hatch',  css = "'Rubik Marker Hatch', cursive" },
+        { id = 'burn',      label = 'Burned',        css = "'Rubik Burned', cursive" },
+        { id = 'glitch',    label = 'Glitch',        css = "'Rubik Glitch', cursive" },
+        { id = 'vinyl',     label = 'Vinyl',         css = "'Rubik Vinyl', cursive" },
+        { id = 'rough',     label = 'Distressed',    css = "'Rubik Distressed', cursive" },
+        { id = 'puddle',    label = 'Puddles',       css = "'Rubik Puddles', cursive" },
+        { id = 'moon',      label = 'Moonrocks',     css = "'Rubik Moonrocks', cursive" },
+        { id = 'beast',     label = 'Beastly',       css = "'Rubik Beastly', cursive" },
+        { id = 'maze',      label = 'Maze',          css = "'Rubik Maze', cursive" },
+        { id = 'pixels',    label = 'Pixels',        css = "'Rubik Pixels', cursive" },
+        { id = 'scribble',  label = 'Scribble',      css = "'Rubik Scribble', cursive" },
+        { id = 'dirt',      label = 'Dirt',          css = "'Rubik Dirt', cursive" },
+        { id = 'iso',       label = 'Iso 3D',        css = "'Rubik Iso', cursive" },
+        { id = 'storm',     label = 'Storm',         css = "'Rubik Storm', cursive" },
+        { id = 'gothic',    label = 'Old English',   css = "'UnifrakturMaguntia', cursive" },
+        { id = 'neon',      label = 'Neon Tube',     css = "'Monoton', cursive" },
+        { id = 'horror',    label = 'Horror',        css = "'Creepster', cursive" },
+        { id = 'gore',      label = 'Gore',          css = "'Nosifer', cursive" },
+        { id = 'bones',     label = 'Bones',         css = "'Butcherman', cursive" },
+        { id = 'metal',     label = 'Metal',         css = "'Metal Mania', cursive" },
+        { id = 'wild',      label = 'Wildstyle',     css = "'Bungee Shade', cursive" },
+        { id = 'slab',      label = 'Slab',          css = "'Bungee', cursive" },
+        { id = 'hollow',    label = 'Hollow',        css = "'Bungee Outline', cursive" },
+        { id = 'inline',    label = 'Inline',        css = "'Bungee Inline', cursive" },
+        { id = 'block',     label = 'Block',         css = "'Archivo Black', sans-serif" },
+        { id = 'stencil',   label = 'Stencil',       css = "'Oswald', sans-serif" },
+        { id = 'heavy',     label = 'Heavy',         css = "'Anton', sans-serif" },
+        { id = 'poster',    label = 'Poster',        css = "'Staatliches', cursive" },
+        { id = 'fast',      label = 'Speed',         css = "'Faster One', cursive" },
+        { id = 'loud',      label = 'Loud',          css = "'Bangers', cursive" },
+        { id = 'fun',       label = 'Cartoon',       css = "'Luckiest Guy', cursive" },
+        { id = 'chunk',     label = 'Chunky',        css = "'Sigmar One', cursive" },
+        { id = 'script',    label = 'Script',        css = "'Lobster', cursive" },
+        { id = 'brush',     label = 'Brush',         css = "'Shrikhand', cursive" },
+        { id = 'hand',      label = 'Handwriting',   css = "'Caveat', cursive" },
+        { id = 'thin',      label = 'Thin Marker',   css = "'Shadows Into Light', cursive" },
+        { id = 'army',      label = 'Military',      css = "'Black Ops One', cursive" },
+        { id = 'west',      label = 'Western',       css = "'Rye', cursive" },
     },
 }
 
 -- ─────────────────────────────────────────────────────────────
--- Tier unlocks
--- When a gang's notoriety reaches a tier, the listed benches become
--- placeable by the Boss (or anyone with 'place_objects') — nothing spawns
--- automatically. There's only one bench overall now: it unlocks at Local,
--- and higher gang tiers unlock more recipes at that SAME bench rather than
--- needing a separate "Advanced Workbench" (see Config.Recipes' `tier`
--- field below). Each entry needs a stable `id`: it's how the gang's chosen
--- position for that specific bench is remembered in the DB.
+-- Raids & gang war
+-- Two escalating things:
+--   RAID  — a short strike on a rival's HQ. Mobilise, get bodies to their
+--           HQ, hold it against them. Winner takes a cut of the loser's
+--           treasury; optionally a zone too, if captureZoneOnWin is on.
+--   WAR   — a declared, two-sided fight with a shared war meter fed by
+--           kills between the two gangs. Winning opens the stash raid.
 -- ─────────────────────────────────────────────────────────────
--- Model names are plain strings, not backtick hash literals — placements
--- round-trip through a VARCHAR column in the DB, and a backtick literal
--- compiles to a number that gets silently stringified into garbage once
--- it hits that column. Natives accept model name strings directly, so
--- there's no need to hash them ourselves.
--- Peds are no longer placeable here — the dealer (Config.Dealer below) is
--- now an on-demand contact instead of a boss-placed fixture.
-Config.TierUnlocks = {
-    Local = {
-        benches = {
-            -- prop_tool_bench02 confirmed valid via /testmodel. Keeping the
-            -- original id (local_crafting_bench) so anything already placed
-            -- under it doesn't get orphaned.
-            { id = 'local_crafting_bench', model = 'prop_tool_bench02', label = 'Crafting Bench' },
+Config.War = {
+    enabled = true,
+
+    raid = {
+        cost = 10000,               -- staged from the attacker's treasury
+        prepSeconds = 120,          -- warning window before the raid goes live
+        durationSeconds = 600,      -- how long the attackers have
+        holdSeconds = 90,           -- seconds of uncontested presence at the HQ to win
+        radius = 40.0,              -- how close to the defender HQ counts as "there"
+        minAttackers = 2,
+        minDefendersOnline = 1,     -- can't raid a gang with nobody online
+        cooldownMinutes = 120,      -- per attacking gang
+        immunityMinutes = 90,       -- defender can't be raided again this soon
+        cashCutPct = 15,            -- % of the loser's treasury taken (before upgrades)
+        cashCutMax = 250000,        -- hard ceiling on a single raid payout
+        -- Off by default to match the influence model: turf doesn't move
+        -- between crews on its own. Turn it on if you want a won raid to
+        -- be the one exception that takes a block off someone.
+        captureZoneOnWin = false,
+    },
+
+    war = {
+        declareCost = 25000,
+        durationMinutes = 60,
+        scoreToWin = 15,            -- net kill lead needed to win outright
+        killScore = 1,
+        -- Killing the same person repeatedly stops scoring for this long.
+        repeatKillCooldownSeconds = 120,
+        cooldownMinutes = 180,
+        -- The loser's safe becomes lootable for this long after a war.
+        stashWindowMinutes = 15,
+    },
+
+    -- Stash raid: after a war win, the loser's placed Crew Safe is
+    -- lootable. A compass arrow, blip and live distance guide the winner in.
+    stash = {
+        enabled = true,
+        lootRadius = 3.0,
+        lootSeconds = 12,
+        -- What comes out. Cash is taken from the loser's treasury; items
+        -- are pulled from the loser's actual vault stash, so there is
+        -- something real to lose.
+        cashPct = 20,
+        cashMax = 150000,
+        lootItems = true,
+        maxItemStacks = 6,
+    },
+}
+
+-- ─────────────────────────────────────────────────────────────
+-- Gang medic
+-- Unlocked by placing the Medic Station (Feared tier). Lets a member
+-- patch up their own crew in the field instead of waiting on EMS.
+-- ─────────────────────────────────────────────────────────────
+Config.Medic = {
+    enabled = true,
+    -- Only members of the same gang can be treated.
+    healCooldownSeconds = 180,     -- per medic
+    reviveCooldownSeconds = 600,   -- per medic
+    healAmount = 50,               -- HP restored
+    reviveHealth = 130,            -- HP the revived player comes back on
+    treatSeconds = 8,
+    requiredItem = 'bandage',      -- leave blank to require nothing
+    consumeItem = true,
+    -- Reviving is the strong one, so by default the patient has to be at
+    -- the station. Healing works anywhere.
+    reviveNeedsStation = true,
+    stationRadius = 25.0,
+
+    -- ONE clinic the whole server shares, not a per-crew placeable. Every
+    -- gang uses the same back alley.
+    --
+    -- coords = nil switches the station off: the prop and blip never
+    -- spawn, and with reviveNeedsStation = true nobody can revive at all.
+    station = {
+        coords = vec3(2457.74, 4980.51, 45.81),
+        heading = 0.0,
+        model = 'prop_medstation_02',    -- '' for no prop at all
+        label = 'Back-Alley Clinic',
+        blip = {
+            enabled = true,
+            sprite = 61,
+            color = 2,
+            scale = 0.7,
+            shortRange = true,
         },
+    },
+}
+
+-- ─────────────────────────────────────────────────────────────
+-- Field radial
+-- A quick-action wheel for everything the crew does in the world. Every
+-- entry is individually toggleable — turn off anything your server
+-- already handles in a police or inventory script so the two don't fight.
+--
+-- `key` is the keybind. It registers through FiveM's keymapping, so
+-- players can also rebind it themselves in Settings > Keybinds > FiveM.
+-- ─────────────────────────────────────────────────────────────
+Config.Radial = {
+    enabled = true,
+    key = 'F6',
+    command = 'gangradial',
+    -- Radial actions. Set enabled = false on anything that collides with
+    -- another resource on your server.
+    actions = {
+        graffiti     = { enabled = true,  label = 'Spray Tag',     icon = 'fa-spray-can' },
+        garage       = { enabled = true,  label = 'Gang Garage',   icon = 'fa-warehouse' },
+        medic        = { enabled = true,  label = 'Treat Crew',    icon = 'fa-kit-medical' },
+        revive       = { enabled = true,  label = 'Revive Crew',   icon = 'fa-heart-pulse' },
+        capture      = { enabled = true,  label = 'Claim Turf',    icon = 'fa-flag' },
+        cuff         = { enabled = true,  label = 'Cuff / Uncuff', icon = 'fa-handcuffs' },
+        bag          = { enabled = true,  label = 'Bag Head',      icon = 'fa-mask' },
+        trunk        = { enabled = true,  label = 'Put In Trunk',  icon = 'fa-car-rear' },
+        carry        = { enabled = true,  label = 'Carry',         icon = 'fa-people-carry-box' },
+        escort       = { enabled = true,  label = 'Escort',        icon = 'fa-person-walking' },
+        hostage      = { enabled = true,  label = 'Take Hostage',  icon = 'fa-user-lock' },
+        searchRob    = { enabled = true,  label = 'Search & Rob',  icon = 'fa-hand' },
+        slashTyre    = { enabled = true,  label = 'Slash Tyre',    icon = 'fa-screwdriver' },
+        tablet       = { enabled = true,  label = 'Open Tablet',   icon = 'fa-tablet-screen-button' },
+    },
+    -- Robbing: what a search turns up off another player.
+    rob = {
+        cashOnly = false,          -- true = only ever take cash, never items
+        maxItemStacks = 3,
+        requireHandsUp = true,     -- target must be cuffed or hands-up
+    },
+    -- Cuffing. Needs the item unless it is left blank.
+    cuffItem = 'handcuffs',
+    bagItem = '',
+    -- Seconds the cuff/bag/carry animations take.
+    actionSeconds = 3,
+
+    -- Slashing a tyre. Blank the item to need nothing.
+    slash = {
+        item = 'weapon_knife',
+        -- true removes one on use; a weapon should almost always be false.
+        consume = false,
+        seconds = 3,
+        -- Knife in hand for the animation. Blank for none.
+        prop = 'prop_w_me_knife_01',
+        -- First dictionary that exists in your build is the one used.
+        anims = {
+            { dict = 'anim@gangops@facility@servers@bodysearch@', clip = 'player_search' },
+            { dict = 'amb@medic@standing@kneel@base',             clip = 'base' },
+            { dict = 'anim@heists@ornate_bank@grab_cash',          clip = 'grab' },
+        },
+    },
+}
+
+-- ─────────────────────────────────────────────────────────────
+-- Solo test mode
+-- Admin-toggled. Spawns hostile NPC defenders on captures and raids so
+-- one person can exercise the whole invasion loop without a rival gang
+-- online. Never on by default, and always announced in the UI while live.
+-- ─────────────────────────────────────────────────────────────
+Config.TestMode = {
+    enabled = true,          -- whether admins may turn it on at all
+    defenderCount = 3,
+    defenderModel = 'g_m_y_lost_01',
+    defenderWeapon = 'WEAPON_PISTOL',
+    defenderAccuracy = 40,
+    spawnRadius = 25.0,
+    -- Test-mode defenders count as bodies on the defending side, so the
+    -- influence bar behaves the way a real fight would.
+    countAsDefenders = true,
+}
+
+-- ─────────────────────────────────────────────────────────────
+-- Analytics
+-- Street standing: every gang on the server ranked side by side.
+-- ─────────────────────────────────────────────────────────────
+Config.Analytics = {
+    enabled = true,
+    -- Weights used for the composite "street standing" score. Tune to
+    -- whatever your server should actually reward.
+    weights = {
+        rep       = 1.0,
+        territory = 500,     -- per zone held
+        members   = 40,      -- per member
+        treasury  = 0.01,    -- per dollar banked
+        warWins   = 250,     -- per war won
+    },
+    -- How many gangs the standings table shows.
+    limit = 15,
+    -- Show rival treasuries to everyone, or only your own gang's.
+    publicTreasury = false,
+}
+
+-- ─────────────────────────────────────────────────────────────
+-- Contracts board
+-- Gang-facing jobs. Same engine as the old task list, but presented as a
+-- board with categories, a difficulty rating and a cash payout alongside
+-- the rep. Every contract still validates server-side at each step.
+-- ─────────────────────────────────────────────────────────────
+Config.Contracts = {
+    enabled = true,
+    -- How many contracts sit on the board at once, and how often the
+    -- selection rerolls.
+    boardSize = 5,
+    rotateMinutes = 45,
+    -- Categories shown as filters in the UI.
+    categories = {
+        { id = 'hit',      label = 'Assassination', icon = 'fa-crosshairs' },
+        { id = 'narcotic', label = 'Narcotics',     icon = 'fa-pills' },
+        { id = 'transport', label = 'Transport',    icon = 'fa-truck' },
+        { id = 'disposal', label = 'Disposal',      icon = 'fa-dumpster' },
+        { id = 'kidnap',   label = 'Kidnapping',    icon = 'fa-user-lock' },
     },
 }
 
 -- ─────────────────────────────────────────────────────────────
 -- Task ranks
 -- Personal progression, separate from gang rep — independent of which
--- gang you're in (or if you leave one), tracked in xs_task_stats.
--- `xp` on a task entry below feeds this; `reward` is the gang rep it pays,
--- a completely separate number. minLevel on a task gates whether it shows
--- up in your available list at all.
+-- gang you're in, tracked in xs_task_stats. `xp` on a contract feeds this;
+-- `reward` is the gang rep it pays, a completely separate number.
 -- ─────────────────────────────────────────────────────────────
 Config.TaskLevels = {
     { level = 1, xpNeeded = 0,    title = 'Rookie' },
@@ -286,16 +838,15 @@ Config.TaskLevels = {
 }
 
 Config.TaskAchievements = {
-    { id = 'first_job', label = 'First Job', description = 'Complete your first task', type = 'total_completed', value = 1 },
-    { id = 'ten_jobs', label = 'Reliable', description = 'Complete 10 tasks', type = 'total_completed', value = 10 },
-    { id = 'fifty_jobs', label = 'Workhorse', description = 'Complete 50 tasks', type = 'total_completed', value = 50 },
-    { id = 'max_rank', label = 'Top Operative', description = 'Reach the max task rank', type = 'level', value = 5 },
+    { id = 'first_job', label = 'First Job', description = 'Complete your first contract', type = 'total_completed', value = 1 },
+    { id = 'ten_jobs', label = 'Reliable', description = 'Complete 10 contracts', type = 'total_completed', value = 10 },
+    { id = 'fifty_jobs', label = 'Workhorse', description = 'Complete 50 contracts', type = 'total_completed', value = 50 },
+    { id = 'max_rank', label = 'Top Operative', description = 'Reach the max contract rank', type = 'level', value = 5 },
 }
 
--- Co-op: invite a specific player (same pattern as Boosting's crews) to
--- tackle a task together. Tasks flagged coopOnly are exclusive to crews —
--- they never show in the solo list. Reward bonus splits across the crew;
--- XP is NOT split, every member gets the full amount.
+-- Co-op: invite a specific crew member to run a contract together.
+-- Contracts flagged coopOnly never show in the solo list. The reward bonus
+-- splits across the crew; XP is NOT split, everyone gets the full amount.
 Config.TasksCoop = {
     enabled = true,
     maxCrewSize = 3,
@@ -303,56 +854,35 @@ Config.TasksCoop = {
 }
 
 -- ─────────────────────────────────────────────────────────────
--- Tasks
--- Personal jobs members run for rep (solo or co-op). Add as many as you
--- want here — no other file needs touching.
+-- Contracts
+-- `category` maps to Config.Contracts.categories. `difficulty` is 1-5 and
+-- is purely presentational. `cash` is paid on completion on top of rep.
 --
--- type = 'delivery' (default): target the pickup item (ox_target sphere
---   zone, or an [E] prompt without ox_target), then target a delivery ped
---   at the dropoff to hand it off. Each step is a server callback that
---   re-checks the player's actual position at that moment.
---   carryProp (optional) attaches a prop to the player between the two
---   stages — pure visual flavor, doesn't change validation at all.
---   dropoffPedModel — the ped spawned at the dropoff to deliver to.
--- type = 'kill': server picks a random spawnPoints entry, client spawns an
---   armed hostile NPC there and reports back when it's dead. The server
---   only trusts that report after minKillSeconds.
+-- type = 'delivery' (default): target the pickup item, then target a
+--   delivery ped at the dropoff. Each step re-checks the player's real
+--   position server-side at that moment. carryProp attaches a prop
+--   between the two stages for flavour.
+-- type = 'kill': server picks a random spawnPoints entry; the client
+--   spawns an armed hostile there and reports back when it's dead. The
+--   server only trusts that report after minKillSeconds.
 -- type = 'escort': a friendly NPC spawns at `spawn` and follows you to
---   `destination` — fails if it dies en route. Completes when you (and it)
---   reach the destination.
--- type = 'heist': three sequential target points — infiltrate (hold the
---   interaction for holdSeconds), grab (instant), escape (reach the point
---   within the task's timeLimitSeconds, counted from when you started).
--- type = 'courier': a full van-delivery loop, five stages:
---   1. pickup_van — a van spawns at `vanSpawn` with `quartermasterModel`
---      standing next to it; talk to him to actually load the package in.
---   2. enroute — drive the van to `dropoffs`.
---   3. unload — open the van's boot (target attached to the vehicle
---      itself, not a floating zone) to take the package out, with an
---      animation; this is also validated by the van's actual position,
---      not just yours, so parking nearby and walking off doesn't count.
---   4. handoff — give it to the ped waiting at the dropoff (animated).
---   5. return — drive the van all the way back to its spawn point to
---      actually finish the job — delivering the package alone doesn't
---      complete it, the van has to come home too.
---   `vanSpawns` and `dropoffs` are each lists — one of each is picked at
---   random per job, same pattern as Boosting's vehicle `spawns` lists, so
---   it's not the same two spots every single time.
---   `ambushChance` (0-100) is rolled once per job — on a hit, hostiles are
---   waiting near the dropoff itself (not a random highway encounter), and
---   you get a "this van's hot" warning the moment you're close enough to
---   trigger them, never a blindside.
--- (Car boosting is NOT a task type — it's a fully separate system with its
--- own levels/XP/leaderboard, independent of gangs. See Config.Boosting.)
+--   `destination` — fails if it dies en route.
+-- type = 'heist': three sequential points — infiltrate (hold for
+--   holdSeconds), grab (instant), escape (reach it inside the time limit).
+-- type = 'courier': the full van loop — collect the van from a
+--   quartermaster, drive it to the dropoff, open the boot to unload, hand
+--   off to the ped, then bring the van home. `ambushChance` (0-100) rolls
+--   once per job; on a hit, hostiles wait near the dropoff and you get a
+--   warning the moment you're close enough to trigger them.
 -- ─────────────────────────────────────────────────────────────
 Config.Tasks = {
     {
         id = 'package_run',
         type = 'courier',
+        category = 'transport',
+        difficulty = 1,
         label = 'Package Run',
         minLevel = 1,
-        -- User-confirmed spots, not random guesses. vanSpawns carry a heading
-        -- for the van; dropoffs carry a heading for the ped you hand off to.
         vanModel = 'speedo',
         vanSpawns = {
             vec4(-38.8354, -1448.0388, 31.2414, 185.3257),
@@ -368,21 +898,22 @@ Config.Tasks = {
             vec4(-344.2141, -2438.3101, 5.9979, 309.7777),
             vec4(145.7043, -3185.3767, 5.8554, 159.0886),
         },
-        radius = 6.0,             -- meters to count as "close enough" (player AND van)
-        reward = 35,              -- personal + gang rep on completion
-        xp = 25,                  -- personal task-rank XP on completion
-        cooldownMinutes = 25,     -- per player, per task
-        timeLimitSeconds = 600,   -- fail if not finished (van home included) within this window
+        radius = 6.0,
+        reward = 35,
+        cash = 1200,
+        xp = 25,
+        cooldownMinutes = 25,
+        timeLimitSeconds = 600,
         ambushChance = 25,
-        carryProp = 'prop_box_ammo04a', -- shown while carrying the unloaded package to the ped
-        -- g_m_y_lost_01 confirmed valid via /testmodel — the ped you hand the package to,
-        -- and the quartermaster who loads the van in the first place.
+        carryProp = 'prop_box_ammo04a',
         dropoffPedModel = 'g_m_y_lost_01',
         quartermasterModel = 'g_m_y_lost_01',
     },
     {
         id = 'briefcase_run',
         type = 'courier',
+        category = 'transport',
+        difficulty = 2,
         label = 'Briefcase Run',
         minLevel = 1,
         vanModel = 'speedo',
@@ -402,12 +933,11 @@ Config.Tasks = {
         },
         radius = 6.0,
         reward = 50,
+        cash = 1800,
         xp = 35,
         cooldownMinutes = 30,
         timeLimitSeconds = 600,
         ambushChance = 40,
-        -- Verify with /testmodel before relying on this — distinct from
-        -- Package Run's box so the two jobs don't feel identical.
         carryProp = 'prop_attache_case_01',
         dropoffPedModel = 'g_m_y_lost_01',
         quartermasterModel = 'g_m_y_lost_01',
@@ -415,10 +945,11 @@ Config.Tasks = {
     {
         id = 'hit_contract',
         type = 'kill',
+        category = 'hit',
+        difficulty = 3,
         label = 'Hit Contract',
         minLevel = 2,
-        -- Placeholders — pick your own spots; these are not verified for
-        -- this purpose. The dealer's vec4 list below is separate.
+        -- Placeholders — pick your own spots.
         spawnPoints = {
             vec3(425.1, -979.5, 30.7),
             vec3(-1037.2, -2737.8, 20.2),
@@ -427,14 +958,17 @@ Config.Tasks = {
         pedModel = 'g_m_y_lost_01',
         weapon = 'WEAPON_PISTOL',
         reward = 40,
+        cash = 2000,
         xp = 30,
         cooldownMinutes = 30,
         timeLimitSeconds = 600,
-        minKillSeconds = 5, -- reject a "target down" report faster than this — clearly not legit
+        minKillSeconds = 5,
     },
     {
         id = 'vip_escort',
         type = 'escort',
+        category = 'transport',
+        difficulty = 3,
         label = 'VIP Escort',
         minLevel = 2,
         -- Placeholders — pick your own spots.
@@ -443,6 +977,7 @@ Config.Tasks = {
         radius = 5.0,
         pedModel = 'g_m_y_lost_01',
         reward = 45,
+        cash = 2200,
         xp = 35,
         cooldownMinutes = 30,
         timeLimitSeconds = 600,
@@ -450,6 +985,8 @@ Config.Tasks = {
     {
         id = 'safehouse_job',
         type = 'heist',
+        category = 'narcotic',
+        difficulty = 4,
         label = 'Safehouse Job',
         minLevel = 3,
         -- Placeholders — pick your own spots.
@@ -459,22 +996,71 @@ Config.Tasks = {
         holdSeconds = 6,
         radius = 2.5,
         reward = 60,
+        cash = 3500,
         xp = 45,
         cooldownMinutes = 40,
         timeLimitSeconds = 480,
     },
     {
+        id = 'body_disposal',
+        type = 'courier',
+        category = 'disposal',
+        difficulty = 3,
+        label = 'Body Disposal',
+        minLevel = 2,
+        vanModel = 'speedo',
+        vanSpawns = {
+            vec4(-24.8434, -1225.5367, 29.0739, 91.4652),
+            vec4(-1139.8976, -353.9975, 37.4110, 354.7283),
+        },
+        dropoffs = {
+            vec4(-344.2141, -2438.3101, 5.9979, 309.7777),
+            vec4(145.7043, -3185.3767, 5.8554, 159.0886),
+        },
+        radius = 6.0,
+        reward = 55,
+        cash = 2600,
+        xp = 40,
+        cooldownMinutes = 35,
+        timeLimitSeconds = 600,
+        ambushChance = 20,
+        carryProp = 'prop_big_bag_01',
+        dropoffPedModel = 'g_m_y_lost_01',
+        quartermasterModel = 'g_m_y_lost_01',
+    },
+    {
+        id = 'snatch_job',
+        type = 'escort',
+        category = 'kidnap',
+        difficulty = 4,
+        label = 'Snatch Job',
+        minLevel = 3,
+        -- Placeholders — pick your own spots.
+        spawn = vec3(-1300.0, -1100.0, 5.0),
+        destination = vec3(700.0, -1000.0, 22.0),
+        radius = 5.0,
+        pedModel = 'a_m_m_soucent_01',
+        reward = 65,
+        cash = 3000,
+        xp = 45,
+        cooldownMinutes = 40,
+        timeLimitSeconds = 600,
+    },
+    {
         id = 'crew_hit',
         type = 'kill',
-        label = 'Crew Hit (Co-op only)',
+        category = 'hit',
+        difficulty = 5,
+        label = 'Crew Hit',
         minLevel = 1,
-        coopOnly = true, -- never shows in the solo list, only when running a crew job
+        coopOnly = true, -- never shows in the solo list
         spawnPoints = {
             vec3(-1037.2, -2737.8, 20.2),
         },
         pedModel = 'g_m_y_lost_01',
         weapon = 'WEAPON_PISTOL',
         reward = 70,
+        cash = 4000,
         xp = 50,
         cooldownMinutes = 25,
         timeLimitSeconds = 600,
@@ -483,200 +1069,9 @@ Config.Tasks = {
 }
 
 -- ─────────────────────────────────────────────────────────────
--- Car boosting
--- Fully standalone: no gang, no gang rep, open to everyone. Personal XP
--- and a level only this system cares about. Each level has its own
--- `vehicles` pool; at level N you can be assigned any vehicle from levels
--- 1..N (cumulative — higher levels don't lose access to earlier cars).
--- Completing a boost always pays `cash` for that specific vehicle and
--- grants `xp` toward the next level. The leaderboard ranks by lifetime
--- cars boosted, not level or cash.
---
--- Each vehicle's `spawns` is a list — one is picked at random each time,
--- so the same car doesn't always show up in the same spot. Add as many
--- as you want per vehicle; one is fine to start.
---
--- Placeholders — pick real model names (verify with /testmodel) and real
--- spots on your map before relying on any of this.
--- ─────────────────────────────────────────────────────────────
-Config.Boosting = {
-    enabled = true,
-    -- One is picked at random per job — confirmed ground-level by user testing.
-    dropoffs = {
-        vec4(718.0250, -1084.7808, 22.3153, 93.0969),
-        vec4(-733.6343, -286.6304, 36.9487, 266.3384),
-        vec4(-1223.1425, -704.7170, 22.5838, 326.9461),
-    },
-    dropoffRadius = 15.0,    -- bring the stolen vehicle within this range of the buyer ped
-    -- No custom lockpick/hotwire minigame here — the vehicle just spawns
-    -- locked with no owner/keys, and qbx_core's own vehicle break-in/hotwire
-    -- system handles the actual theft. We just watch for the engine to
-    -- actually start (however it gets there) and move on to the drop-off.
-    --
-    -- No exact waypoint to the car — the tablet shows a search-zone circle
-    -- plus the model + plate as a BOLO-style clue, and you have to actually
-    -- drive around and spot it. Guards don't spawn until you get close, so
-    -- the search phase itself is guard-free.
-    searchRadius = 250.0,
-    guardTriggerRadius = 20.0,
-    cooldownMinutes = 10,
-    timeLimitSeconds = 900,
-    cashAccount = 'cash',
-    -- g_m_y_lost_01 confirmed valid via /testmodel — the buyer you hand the car to at drop-off.
-    buyerPedModel = 'g_m_y_lost_01',
-    recentActivityLimit = 10,
-
-    -- Extra confirmed-ground-level spots, shared across every vehicle below
-    -- for spawn variety — which specific car lands at which spot doesn't
-    -- matter mechanically, so they're just pooled rather than tied 1:1.
-    extraSpawns = {
-        vec4(-1173.4260, -1387.2906, 4.2710, 124.7875),
-        vec4(-810.3212, -1290.9629, 4.3935, 350.7089),
-        vec4(-423.9217, -30.6549, 45.6205, 356.8702),
-        vec4(-101.1543, -57.3651, 55.7671, 256.1645),
-        vec4(195.9602, -250.7542, 65.1311, 70.3728),
-        vec4(872.9670, -46.2850, 78.1578, 236.3890),
-    },
-
-    -- cooldownMinutes per level overrides the global one above — leave it
-    -- off a level to just inherit the global default. perkPoints is
-    -- awarded once, the moment you cross into that level.
-    levels = {
-        {
-            level = 1, label = 'Joyrider', xpNeeded = 0, perkPoints = 1,
-            vehicles = {
-                { model = 'blista', label = 'Blista', spawns = { vec4(-44.0, -1752.0, 29.4, 230.0) }, cash = 600, xp = 15 },
-                -- confirmed ground-level by user testing.
-                { model = 'asea', label = 'Asea', spawns = { vec4(1188.0234, -1287.5217, 34.5036, 264.1924) }, cash = 500, xp = 12 },
-            },
-        },
-        {
-            level = 2, label = 'Wheelman', xpNeeded = 100, cooldownMinutes = 8, perkPoints = 1,
-            vehicles = {
-                { model = 'sultan', label = 'Sultan', spawns = { vec4(425.0, -979.0, 30.7, 0.0) }, cash = 1200, xp = 22 },
-            },
-        },
-        {
-            level = 3, label = 'Pro', xpNeeded = 300, cooldownMinutes = 6, perkPoints = 2,
-            vehicles = {
-                { model = 'sultanrs', label = 'Sultan RS', spawns = { vec4(-1037.0, -2737.0, 20.2, 0.0) }, cash = 2200, xp = 35 },
-            },
-        },
-    },
-
-    -- Perks: passive, permanent unlocks bought with perk_points (never
-    -- consumed/used-up, no inventory items involved). Each `type` is a
-    -- modifier the server applies at the relevant moment:
-    --   cash_bonus_pct        — +value% on every sale's cash payout
-    --   guard_reduction       — -value guards spawned per job (floor 0)
-    --   dispatch_delay        — dispatch fires `value` seconds after the
-    --                           theft instead of instantly (more time to flee)
-    --   cooldown_reduction_pct — -value% off your current cooldown (stacks
-    --                           with the level-based cooldown above)
-    perks = {
-        { id = 'fence_connections', label = 'Fence Connections', description = '+10% cash on every sale',
-          cost = 1, type = 'cash_bonus_pct', value = 10 },
-        { id = 'fence_connections_2', label = 'Better Fence Connections', description = 'Another +15% cash on every sale',
-          cost = 2, type = 'cash_bonus_pct', value = 15 },
-        { id = 'thin_the_crowd', label = 'Thin the Crowd', description = '-1 guard near every target vehicle',
-          cost = 1, type = 'guard_reduction', value = 1 },
-        { id = 'ghost_protocol', label = 'Ghost Protocol', description = 'Removes guards near target vehicles entirely',
-          cost = 2, type = 'guard_reduction', value = 99 },
-        { id = 'signal_jammer', label = 'Signal Jammer', description = 'Delays the police dispatch alert by 20s after a theft',
-          cost = 2, type = 'dispatch_delay', value = 20 },
-        { id = 'quick_fingers', label = 'Quick Fingers', description = '-20% cooldown between jobs',
-          cost = 1, type = 'cooldown_reduction_pct', value = 20 },
-    },
-
-    -- Police dispatch hook: fires the moment a hotwire succeeds (the theft
-    -- itself), client-side, since most dispatch resources expect to be
-    -- triggered with the calling player's own context. The event
-    -- name/payload below is just an example shaped for cd_dispatch —
-    -- change both to match whatever dispatch resource your server
-    -- actually runs. Set enabled = false to skip this entirely.
-    dispatch = {
-        enabled = false,
-        event = 'cd_dispatch:AddNotification',
-        buildPayload = function(coords)
-            return {
-                job_name = 'xs_boost',
-                job_label = 'Stolen Vehicle',
-                coords = coords,
-                icon = 'fa-solid fa-car-side',
-                offset = false,
-                length = 4,
-                scanLine = { sCode = '10-46', message = 'Vehicle theft reported' },
-                flashes = 1,
-                sound = 'one',
-                alert_color = 22,
-                blip = { sprite = 526, scale = 1.2, colour = 1 },
-                jobs = { 'police' },
-                time = 5,
-            }
-        end,
-    },
-
-    -- Guards: armed hostile peds spawn near the target vehicle while
-    -- you're stealing it — a friend can come fight them off while you
-    -- work, or you can try to outrun/lose them. Despawn once the engine
-    -- starts (or the job ends any other way). Set enabled = false to skip.
-    guards = {
-        enabled = true,
-        count = 2,
-        radius = 6.0,           -- how far from the vehicle they spawn
-        model = 'g_m_y_lost_01',
-        weapon = 'WEAPON_PISTOL',
-    },
-
-    -- Achievements: computed live from xs_boost_stats — no separate
-    -- "earned" tracking needed, just a threshold check every time status
-    -- is fetched. type = 'total_boosted' or 'level'.
-    achievements = {
-        { id = 'first_boost', label = 'First Blood', description = 'Boost your first vehicle', type = 'total_boosted', value = 1 },
-        { id = 'ten_boosts', label = 'Joyride Junkie', description = 'Boost 10 vehicles', type = 'total_boosted', value = 10 },
-        { id = 'fifty_boosts', label = 'Professional', description = 'Boost 50 vehicles', type = 'total_boosted', value = 50 },
-        { id = 'hundred_boosts', label = 'Legend', description = 'Boost 100 vehicles', type = 'total_boosted', value = 100 },
-        { id = 'max_level', label = 'Kingpin', description = 'Reach the max level', type = 'level', value = 3 },
-    },
-
-    -- Wanted vehicles: a config-defined pool, several active at once
-    -- (`activeCount`), refreshed regularly (`rotateMinutes`) — not a rare
-    -- one-off. Available to ANY level, on top of (not instead of) the
-    -- normal level-gated pool, for a flat bonus payout.
-    wanted = {
-        enabled = true,
-        activeCount = 2,
-        rotateMinutes = 30,
-        pool = {
-            { model = 'sultanrs', label = 'Wanted: Sultan RS', spawns = { vec4(-1037.0, -2737.0, 20.2, 0.0) }, cash = 3500, xp = 50 },
-            { model = 'sultan', label = 'Wanted: Sultan', spawns = { vec4(425.0, -979.0, 30.7, 0.0) }, cash = 2000, xp = 30 },
-            { model = 'blista', label = 'Wanted: Blista', spawns = { vec4(-44.0, -1752.0, 29.4, 230.0) }, cash = 1200, xp = 20 },
-        },
-    },
-
-    -- Co-op: invite a specific player (like a gang invite) to crew up on a
-    -- harder job from a separate, higher-value vehicle pool. More guards,
-    -- a tighter clock, and dispatch always fires instantly regardless of
-    -- anyone's Signal Jammer perk — teamwork doesn't get the stealth bonus.
-    -- Cash payout gets a bonus on top, then splits evenly across the crew;
-    -- XP is NOT split — every crew member gets the full amount.
-    coop = {
-        enabled = true,
-        maxCrewSize = 3,
-        timeLimitSeconds = 900,       -- same 15-minute window as solo
-        extraGuards = 2,              -- added on top of Config.Boosting.guards.count
-        cashBonusPct = 25,            -- bonus applied before splitting across the crew
-        vehicles = {
-            { model = 'sultanrs', label = 'Co-op: Sultan RS', spawns = { vec4(-1037.0, -2737.0, 20.2, 0.0) }, cash = 4000, xp = 60 },
-        },
-    },
-}
-
--- ─────────────────────────────────────────────────────────────
 -- Treasury
--- No forced dues — every member can deposit into the gang bank whenever
--- they want (voluntary, like paying your own way), withdraw stays gated
--- by the 'manage_bank' permission so a member can't drain it solo.
+-- No forced dues — every member can deposit whenever they want.
+-- Withdrawing is gated by 'bank_withdraw' so one member can't drain it.
 -- ─────────────────────────────────────────────────────────────
 Config.Bank = {
     account = 'bank', -- which money account deposits/withdrawals use
@@ -686,29 +1081,34 @@ Config.Bank = {
 -- ─────────────────────────────────────────────────────────────
 -- Vault / armory
 -- Backed by an ox_inventory stash, namespaced per gang. It's a physical
--- container the Boss places in the world (same flow as bench/ped
--- placement) — there is no remote "open from tablet" option.
+-- container placed in the world — there is no remote "open from tablet".
+-- The container's own model and label come from the `gang_vault` entry in
+-- Config.TierUnlocks above; these are just the stash's base size, which
+-- vault perks and the Vault Expansion upgrade grow from.
 -- ─────────────────────────────────────────────────────────────
 Config.Vault = {
     slots = 50,
     maxWeight = 100000,             -- grams
-    -- prop_box_wood05a confirmed valid via /testmodel on this server.
-    model = 'prop_box_wood05a',
-    label = 'Gang Vault',
+
+    -- The vault's prop grows with the Vault Expansion upgrade: a locker,
+    -- a second locker, then a shipping container. Index 1 is the placed
+    -- vault before any upgrade; after that it follows the upgrade level.
+    -- Buying a level re-models whatever the crew already placed.
+    --
+    -- A model your server does not have prints a line naming it on spawn
+    -- and the prop is skipped, so swapping one is a single edit here.
+    levelModels = {
+        'prop_toolchest_05',     -- level 0-1: a tall locker
+        'prop_toolchest_01',     -- level 2: a bigger one
+        'prop_container_01a',    -- level 3: a shipping container
+    },
 }
 
 -- ─────────────────────────────────────────────────────────────
 -- Crafting
--- Available at any placed bench — there's only one bench, but higher gang
--- tiers unlock more recipes at it (instead of needing a separate
--- "Advanced Workbench"). `tier` is which Config.Notoriety tier the gang
--- needs; omit it (or use the lowest tier name) for something available
--- the moment the bench itself is unlocked. Simple item conversions:
--- consume `inputs`, produce `output`. Item names must match your
--- ox_inventory items.lua exactly — the ones below assume ox_inventory's
--- stock default items (metalscrap/plastic/rope/lockpick); double check
--- they exist on your server (or just rename) before relying on these as
--- more than a test. `time` is the crafting delay in ms.
+-- Available at any placed bench. Higher gang tiers unlock more recipes at
+-- that same bench. `tier` is which Config.Rep tier the gang needs.
+-- Item names must match your ox_inventory items.lua exactly.
 -- ─────────────────────────────────────────────────────────────
 Config.Recipes = {
     {
@@ -728,9 +1128,17 @@ Config.Recipes = {
         time = 4000,
     },
     {
+        id = 'spraycan',
+        label = 'Spray Can',
+        tier = 'Local',
+        inputs = { { item = 'plastic', count = 2 }, { item = 'metalscrap', count = 2 } },
+        output = { item = 'spraycan', count = 2 },
+        time = 4000,
+    },
+    {
         id = 'advanced_lockpick',
         label = 'Advanced Lockpick',
-        tier = 'Notorious', -- example of a higher-tier unlock at the same bench
+        tier = 'Notorious',
         inputs = { { item = 'metalscrap', count = 8 }, { item = 'plastic', count = 4 } },
         output = { item = 'lockpick', count = 3 },
         time = 7000,
@@ -739,17 +1147,14 @@ Config.Recipes = {
 
 -- ─────────────────────────────────────────────────────────────
 -- Drug selling
--- /selldrug — works anywhere, not just gang territory. Client checks for
--- a nearby NPC ped (not a real transaction partner, just a "someone's
--- here to sell to" gate); server validates the item count and cooldown
--- and pays out. Rep only applies if the seller is in a gang. Defaults to
--- ox_inventory's stock drug items — change freely, names just need to
--- match your items.lua.
+-- /selldrug — works anywhere, not just gang territory. The client checks
+-- for a nearby NPC; the server validates the item count and cooldown and
+-- pays out. Names just need to match your items.lua.
 -- ─────────────────────────────────────────────────────────────
 Config.DrugSelling = {
     enabled = true,
     command = 'selldrug',
-    sellRadius = 4.0,         -- need an NPC ped within this many meters
+    sellRadius = 4.0,         -- need an NPC ped within this many metres
     cooldownSeconds = 30,     -- per player
     account = 'cash',
     items = {
@@ -761,20 +1166,18 @@ Config.DrugSelling = {
 
 -- ─────────────────────────────────────────────────────────────
 -- Dealer
--- On-demand, not placed: any gang member hits "Call Dealer" on the
--- tablet. One call at a time, server-wide — a global cooldown, not a
--- per-player one, so the next call is up for grabs to whoever's first
--- after it expires. The ped spawns at a random spot from `spawnPoints`
--- and despawns after `timeoutMinutes` if nobody reaches it. Stock rotates
--- on `rotateMinutes` with a randomized price per pool entry. Item names
--- must match your ox_inventory items.lua exactly.
+-- On-demand, not placed: any member hits "Call Dealer" on the tablet.
+-- One call at a time server-wide. The ped spawns at a random spawnPoints
+-- entry and despawns after timeoutMinutes if nobody reaches it. Stock
+-- rotates on rotateMinutes with a randomised price per pool entry.
+-- Empty by default — add pool entries to enable it.
 -- ─────────────────────────────────────────────────────────────
 Config.Dealer = {
     cooldownHours = 6,
     timeoutMinutes = 10,
     rotateMinutes = 60,
-    stockSize = 4,        -- how many pool entries are in stock at once
-    account = 'cash',      -- which money account purchases pull from
+    stockSize = 4,
+    account = 'cash',
     pedModel = 'g_m_y_lost_01',
     spawnPoints = {
         vec4(328.1793, -1582.1826, 32.7972, 139.3918),
@@ -788,3 +1191,7 @@ Config.Dealer = {
         -- { item = 'weed_brick', label = 'Weed Brick', priceMin = 200, priceMax = 400 },
     },
 }
+
+-- How long since a member's last tablet open before the roster flags them
+-- as inactive (purely visual — doesn't kick or affect anything mechanical).
+Config.GangInactivityDays = 7

@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Permanent+Marker&family=Rubik+Spray+Paint&family=Rubik+Wet+Paint&family=Rubik+Bubbles&family=Rubik+Marker+Hatch&family=Rubik+Burned&family=Rubik+Glitch&family=Rubik+Vinyl&family=Rubik+Distressed&family=Rubik+Puddles&family=Rubik+Moonrocks&family=Rubik+Beastly&family=Rubik+Maze&family=Rubik+Pixels&family=Rubik+Scribble&family=Rubik+Dirt&family=Rubik+Iso&family=Rubik+Storm&family=UnifrakturMaguntia&family=Monoton&family=Creepster&family=Nosifer&family=Butcherman&family=Metal+Mania&family=Bungee+Shade&family=Bungee&family=Bungee+Outline&family=Bungee+Inline&family=Archivo+Black&family=Oswald:wght@500;600;700&family=Anton&family=Staatliches&family=Faster+One&family=Bangers&family=Luckiest+Guy&family=Sigmar+One&family=Lobster&family=Shrikhand&family=Caveat:wght@700&family=Shadows+Into+Light&family=Black+Ops+One&family=Rye&display=swap" />
+<title>tag</title>
+<style>
+    /* This page is a DUI surface painted onto a wall in-world, so the
+       background has to stay genuinely transparent — anything opaque here
+       shows up as a solid rectangle around the tag. */
+    html, body {
+        margin: 0; padding: 0; width: 512px; height: 512px;
+        background: transparent; overflow: hidden;
+    }
+    #stage {
+        width: 512px; height: 512px;
+        display: grid; place-items: center;
+        /* A touch of skew and rotation stops every tag reading as a decal
+           pasted perfectly square on the wall. */
+        transform: rotate(-1.5deg);
+    }
+    #stage img { max-width: 94%; max-height: 94%; object-fit: contain; }
+    .word {
+        font-size: 120px; line-height: 1; text-align: center; word-break: break-word;
+        padding: 0 16px;
+        -webkit-text-stroke: 8px #101216;
+        paint-order: stroke fill;
+        filter: drop-shadow(0 6px 14px rgba(0,0,0,.45));
+    }
+    .font-marker { font-family: 'Permanent Marker', cursive; transform: skewX(-6deg); }
+    .font-spray { font-family: 'Rubik Spray Paint', cursive; transform: skewX(-4deg); }
+    .font-drip { font-family: 'Rubik Wet Paint', cursive; }
+    .font-bubble { font-family: 'Rubik Bubbles', cursive; }
+    .font-hatch { font-family: 'Rubik Marker Hatch', cursive; }
+    .font-burn { font-family: 'Rubik Burned', cursive; }
+    .font-glitch { font-family: 'Rubik Glitch', cursive; }
+    .font-vinyl { font-family: 'Rubik Vinyl', cursive; }
+    .font-rough { font-family: 'Rubik Distressed', cursive; }
+    .font-puddle { font-family: 'Rubik Puddles', cursive; }
+    .font-moon { font-family: 'Rubik Moonrocks', cursive; }
+    .font-beast { font-family: 'Rubik Beastly', cursive; }
+    .font-maze { font-family: 'Rubik Maze', cursive; }
+    .font-pixels { font-family: 'Rubik Pixels', cursive; }
+    .font-scribble { font-family: 'Rubik Scribble', cursive; }
+    .font-dirt { font-family: 'Rubik Dirt', cursive; }
+    .font-iso { font-family: 'Rubik Iso', cursive; }
+    .font-storm { font-family: 'Rubik Storm', cursive; }
+    .font-gothic { font-family: 'UnifrakturMaguntia', cursive; }
+    .font-neon { font-family: 'Monoton', cursive; letter-spacing: 2px; }
+    .font-horror { font-family: 'Creepster', cursive; letter-spacing: 1px; }
+    .font-gore { font-family: 'Nosifer', cursive; }
+    .font-bones { font-family: 'Butcherman', cursive; }
+    .font-metal { font-family: 'Metal Mania', cursive; }
+    .font-wild { font-family: 'Bungee Shade', cursive; transform: skewX(-3deg); }
+    .font-slab { font-family: 'Bungee', cursive; }
+    .font-hollow { font-family: 'Bungee Outline', cursive; }
+    .font-inline { font-family: 'Bungee Inline', cursive; }
+    .font-block { font-family: 'Archivo Black', sans-serif; letter-spacing: -3px; }
+    .font-stencil { font-family: 'Oswald', sans-serif; text-transform: uppercase; letter-spacing: 4px; }
+    .font-heavy { font-family: 'Anton', sans-serif; letter-spacing: 1px; }
+    .font-poster { font-family: 'Staatliches', cursive; letter-spacing: 2px; }
+    .font-fast { font-family: 'Faster One', cursive; }
+    .font-loud { font-family: 'Bangers', cursive; letter-spacing: 2px; }
+    .font-fun { font-family: 'Luckiest Guy', cursive; }
+    .font-chunk { font-family: 'Sigmar One', cursive; }
+    .font-script { font-family: 'Lobster', cursive; }
+    .font-brush { font-family: 'Shrikhand', cursive; }
+    .font-hand { font-family: 'Caveat', cursive; }
+    .font-thin { font-family: 'Shadows Into Light', cursive; }
+    .font-army { font-family: 'Black Ops One', cursive; }
+    .font-west { font-family: 'Rye', cursive; }
+
+    /* Used by the built-in preset: art ids, not by the font list. */
+    .preset-classic { font-family: 'Permanent Marker', cursive; transform: skewX(-6deg); }
+    .preset-bubble  { font-family: 'Archivo Black', sans-serif; letter-spacing: -3px; }
+    .preset-stencil { font-family: 'Oswald', sans-serif; text-transform: uppercase; letter-spacing: 4px; }
+    .preset-drip    { font-family: 'Bungee Shade', cursive; transform: skewX(-3deg); }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<script>
+const stage = document.getElementById('stage');
+
+const PRESETS = {
+    classic: { cls: 'preset-classic', text: 'TAG' },
+    bubble:  { cls: 'preset-bubble',  text: 'THROW' },
+    stencil: { cls: 'preset-stencil', text: 'STENCIL' },
+    drip:    { cls: 'preset-drip',    text: 'DRIP' },
+};
+
+const FONT_CLASS = {
+    marker: 'font-marker',
+    spray: 'font-spray',
+    drip: 'font-drip',
+    bubble: 'font-bubble',
+    hatch: 'font-hatch',
+    burn: 'font-burn',
+    glitch: 'font-glitch',
+    vinyl: 'font-vinyl',
+    rough: 'font-rough',
+    puddle: 'font-puddle',
+    moon: 'font-moon',
+    beast: 'font-beast',
+    maze: 'font-maze',
+    pixels: 'font-pixels',
+    scribble: 'font-scribble',
+    dirt: 'font-dirt',
+    iso: 'font-iso',
+    storm: 'font-storm',
+    gothic: 'font-gothic',
+    neon: 'font-neon',
+    horror: 'font-horror',
+    gore: 'font-gore',
+    bones: 'font-bones',
+    metal: 'font-metal',
+    wild: 'font-wild',
+    slab: 'font-slab',
+    hollow: 'font-hollow',
+    inline: 'font-inline',
+    block: 'font-block',
+    stencil: 'font-stencil',
+    heavy: 'font-heavy',
+    poster: 'font-poster',
+    fast: 'font-fast',
+    loud: 'font-loud',
+    fun: 'font-fun',
+    chunk: 'font-chunk',
+    script: 'font-script',
+    brush: 'font-brush',
+    hand: 'font-hand',
+    thin: 'font-thin',
+    army: 'font-army',
+    west: 'font-west',
+};
+
+function esc(s) {
+    return String(s ?? '').replace(/[&<>"']/g, (c) =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// Shrink long words so a 12-character tag doesn't run off the plate.
+function fitFontSize(len) {
+    if (len <= 4) return 140;
+    if (len <= 7) return 108;
+    if (len <= 11) return 78;
+    if (len <= 16) return 58;
+    return 44;
+}
+
+function render(payload) {
+    const art = String(payload.art || '');
+    const tint = payload.tint || '#f5a524';
+    stage.innerHTML = '';
+
+    if (art.startsWith('url:') || art.startsWith('draw:')) {
+        const img = document.createElement('img');
+        img.src = art.startsWith('url:') ? art.slice(4) : art.slice(5);
+        img.onerror = () => {
+            // A dead link would otherwise leave a blank plate stuck on the
+            // wall with no clue why.
+            stage.innerHTML = '<div class="word preset-stencil" style="color:' + esc(tint) + '">?</div>';
+        };
+        stage.appendChild(img);
+        return;
+    }
+
+    if (art.startsWith('preset:')) {
+        const p = PRESETS[art.slice(7)] || PRESETS.classic;
+        const label = payload.label ? String(payload.label).slice(0, 14) : p.text;
+        const div = document.createElement('div');
+        div.className = 'word ' + p.cls;
+        div.style.color = tint;
+        div.style.fontSize = fitFontSize(label.length) + 'px';
+        div.textContent = label;
+        stage.appendChild(div);
+        return;
+    }
+
+    if (art.startsWith('text:')) {
+        let d = {};
+        try { d = JSON.parse(art.slice(5)); } catch (e) { d = {}; }
+        let text = String(d.text || '').slice(0, 24) || 'TAG';
+        if (d.textCase === 'upper') text = text.toUpperCase();
+        else if (d.textCase === 'lower') text = text.toLowerCase();
+
+        const fill = d.fill || tint;
+        const stroke = Number.isFinite(d.stroke) ? d.stroke : 8;
+        const div = document.createElement('div');
+        div.className = 'word ' + (FONT_CLASS[d.font] || 'preset-classic');
+        div.style.color = fill;
+        div.style.webkitTextStroke = stroke + 'px ' + (d.outline || '#101216');
+        div.style.fontSize = fitFontSize(text.length) + 'px';
+        div.style.letterSpacing = (d.spacing || 0) + 'px';
+
+        // The font classes carry their own skew, so compose rather than
+        // overwrite: the slider nudges whatever the face already does.
+        const skew = d.skew || 0;
+        const rot = d.rotate || 0;
+        if (skew || rot) div.style.transform = 'skewX(' + (-skew) + 'deg) rotate(' + rot + 'deg)';
+
+        if (d.glow === 'neon') {
+            div.style.filter = 'drop-shadow(0 0 6px ' + fill + ') drop-shadow(0 0 18px ' + fill + ')';
+        } else if (d.glow === 'soft') {
+            div.style.filter = 'drop-shadow(0 6px 14px rgba(0,0,0,.55))';
+        } else if (d.glow === 'hard') {
+            div.style.filter = 'drop-shadow(5px 6px 0 rgba(0,0,0,.85))';
+        } else {
+            div.style.filter = 'none';
+        }
+
+        div.textContent = text;
+        stage.appendChild(div);
+        return;
+    }
+
+    stage.innerHTML = '<div class="word preset-stencil" style="color:' + esc(tint) + '">?</div>';
+}
+
+// The Lua side re-sends for a couple of seconds because it cannot know
+// when this script started listening. Remember the last payload so a
+// message that arrives before the fonts or the DOM are settled still ends
+// up on the wall, and so repeats are free.
+let last = null;
+
+function apply(data) {
+    last = data;
+    render(data);
+}
+
+window.addEventListener('message', (ev) => {
+    const data = ev.data || {};
+    if (data.action === 'render') apply(data);
+});
+
+// If anything above ran before the body was ready, paint it again now.
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => { if (last) render(last); });
+}
+
+// Web fonts land after first paint; re-draw once they do so a tag is not
+// stuck in the fallback face.
+if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(() => { if (last) render(last); });
+}
+</script>
+</body>
+</html>

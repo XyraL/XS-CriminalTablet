@@ -34,6 +34,7 @@ const ALLOW = [
   { match: '${PCR_PRIORITY[p].label}', why: 'PCR_PRIORITY is a const defined in that file' },
   { match: '${s.label}',               why: 'reads INCIDENT_STATUS_LABELS, a const in that file' },
   { match: "${data.vehicle.fuel ? Math.round(data.vehicle.fuel) + '%' : '—'}", why: 'a number' },
+  { match: '${contested[0].label}', why: 'builds an alert title string; rendered through escapeHtml(a.title)' },
 ];
 
 const root = process.argv[2] || 'web';
@@ -74,6 +75,19 @@ for (const file of files) {
     // is the entire point — so a value headed there needs no escaping.
     const sinkFor = (index) => {
       const before = line.slice(0, index);
+
+      // toast()/flash() are the project's two notification helpers and both
+      // assign to .textContent, so anything handed to them is already inert.
+      // Recognising them beats one allow-list entry per call site, which is
+      // how a checker slowly stops being read.
+      const notifier = Math.max(before.lastIndexOf('toast('), before.lastIndexOf('flash('));
+      if (notifier >= 0) {
+        const after = before.slice(notifier);
+        const open = (after.match(/\(/g) || []).length;
+        const close = (after.match(/\)/g) || []).length;
+        if (open > close) return 'text';
+      }
+
       return before.lastIndexOf('.textContent') > before.lastIndexOf('.innerHTML')
         ? 'text' : 'html';
     };

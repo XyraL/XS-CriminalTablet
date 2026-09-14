@@ -5,7 +5,8 @@
 -- the "deal" before the sale actually commits.
 -- ─────────────────────────────────────────────────────────────
 if Config.DrugSelling.enabled then
-    local hasTarget = GetResourceState('ox_target') == 'started'
+    local function hasTarget() return XSTarget.Ready() end
+    local targetFailed = false
 
     local function sellMenuFor(ped)
         if not DoesEntityExist(ped) then return end
@@ -35,7 +36,7 @@ if Config.DrugSelling.enabled then
                     TaskPlayAnim(myPed, 'mp_common', 'givetake1_a', 8.0, -8.0, -1, 49, 0, false, false, false)
                     TaskPlayAnim(ped, 'mp_common', 'givetake1_b', 8.0, -8.0, -1, 49, 0, false, false, false)
 
-                    local completed = lib.progressBar({
+                    local completed = XSAnim.Progress({
                         duration = 5000,
                         label = 'Making the deal...',
                         canCancel = true,
@@ -79,7 +80,7 @@ if Config.DrugSelling.enabled then
         return nearest
     end
 
-    if hasTarget then
+    if hasTarget() then
         local ok = pcall(function()
             exports.ox_target:addGlobalPed({
                 {
@@ -94,12 +95,12 @@ if Config.DrugSelling.enabled then
                 },
             })
         end)
-        if not ok then hasTarget = false end
+        if not ok then targetFailed = true end
     end
 
     -- Fallback if ox_target isn't installed (or the addGlobalPed call above
     -- failed for any reason): /selldrug finds the nearest NPC itself.
-    if not hasTarget then
+    if targetFailed or not hasTarget() then
         RegisterCommand(Config.DrugSelling.command, function()
             local ped = nearestPed()
             if not ped then

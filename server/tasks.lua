@@ -9,7 +9,7 @@
 --   you to a destination, fails if it dies en route. 'heist': three
 --   sequential target points (infiltrate -> grab -> escape).
 --
--- Co-op mirrors Boosting's crew pattern: invite a specific player, only
+-- Co-op: invite a specific crew member, only
 -- the crew leader's client spawns any entity (dropoff ped / kill ped /
 -- escort ped) to avoid duplicates, only the leader advances/completes the
 -- shared job, reward splits across the crew (XP is NOT split).
@@ -30,9 +30,8 @@ local pendingCoopInvites = {} -- [targetSrc] = { fromSrc, fromName }
 local function asVec3(v) return vec3(v.x, v.y, v.z) end
 local function dist(a, b) return #(asVec3(a) - asVec3(b)) end
 
--- Validates a courier job's van by its actual networked position, not the
--- player's — mirrors how Boosting validates its drop-off by the vehicle's
--- position rather than just trusting the player walked up to the right spot.
+-- Validates a courier job's van by its actual networked position rather
+-- than the player's, so parking nearby and walking off doesn't count.
 local function vanNear(job, coords, radius)
     if not job or not job.vanNetId then return false end
     local veh = NetworkGetEntityFromNetworkId(job.vanNetId)
@@ -172,13 +171,19 @@ function Tasks.GetAvailable(src)
     local stats = cid and ensureStats(cid, Framework.GetName(src))
     local myLevel = stats and stats.level or 1
     local list = {}
+    local onBoard = Contracts and Contracts.OnBoard() or nil
     for _, t in ipairs(Config.Tasks) do
-        if not t.coopOnly then
+        -- The board only shows a rotating subset; coopOnly entries are
+        -- never on it, they only exist for crews.
+        if not t.coopOnly and (not onBoard or onBoard[t.id]) then
             list[#list + 1] = {
                 id = t.id,
                 label = t.label,
                 type = t.type or 'delivery',
+                category = t.category or 'transport',
+                difficulty = t.difficulty or 1,
                 reward = t.reward,
+                cash = t.cash or 0,
                 xp = t.xp,
                 minLevel = t.minLevel or 1,
                 locked = (t.minLevel or 1) > myLevel,
@@ -198,13 +203,17 @@ function Tasks.GetCoopTasks(src)
     local list = {}
     for _, t in ipairs(Config.Tasks) do
         if (t.minLevel or 1) <= myLevel then
-            list[#list + 1] = { id = t.id, label = t.label, reward = t.reward, xp = t.xp, coopOnly = t.coopOnly == true }
+            list[#list + 1] = {
+                id = t.id, label = t.label, reward = t.reward, cash = t.cash or 0, xp = t.xp,
+                category = t.category or 'transport', difficulty = t.difficulty or 1,
+                coopOnly = t.coopOnly == true,
+            }
         end
     end
     return list
 end
 
--- ── co-op crews (identical shape to Boosting's) ──
+-- ── co-op crews ──
 local function crewOf(src)
     if crews[src] then return crews[src], src end
     for leaderSrc, c in pairs(crews) do
@@ -218,8 +227,25 @@ end
 function Tasks.GetCrewStatus(src)
     local c, leaderSrc = crewOf(src)
     if not c then return nil end
-    return { isLeader = leaderSrc == src, leaderName = c.names[leaderSrc],
-             members = c.names, size = #c.members, maxSize = Config.TasksCoop.maxCrewSize }
+
+    -- An ordered list rather than the internal [src] = name map: the UI
+    -- needs to render these in a stable order and flag the leader.
+    local members = {}
+    for _, memberSrc in ipairs(c.members) do
+        members[#members + 1] = {
+            name = c.names[memberSrc] or ('Player ' .. memberSrc),
+            isLeader = memberSrc == leaderSrc,
+            isMe = memberSrc == src,
+        }
+    end
+
+    return {
+        isLeader = leaderSrc == src,
+        leaderName = c.names[leaderSrc],
+        members = members,
+        size = #c.members,
+        maxSize = Config.TasksCoop.maxCrewSize,
+    }
 end
 
 function Tasks.InviteCoop(src, targetId)
@@ -309,6 +335,7 @@ end
 
 -- ── accept (solo) ──
 function Tasks.Accept(src, taskId)
+    if not Gangs.HasPerm(src, 'accept_contracts') then return false, 'no permission' end
     local def = byId[taskId]
     if not def then return false, 'unknown task' end
     if def.coopOnly then return false, 'this task is co-op only' end
@@ -351,6 +378,7 @@ end
 -- ── accept (co-op): leader picks a task, whole crew gets the shared job ──
 function Tasks.AcceptCoop(src, taskId)
     if not Config.TasksCoop.enabled then return false, 'co-op is disabled' end
+    if not Gangs.HasPerm(src, 'accept_contracts') then return false, 'no permission' end
     local def = byId[taskId]
     if not def then return false, 'unknown task' end
     local c = crews[src]
@@ -434,7 +462,9 @@ function Tasks.Cancel(src)
 end
 
 -- ── reward: one call per crew member for coop, one call for solo ──
-local function rewardMember(src, cid, def)
+-- `cashOverride` is the per-person cash for a co-op job; solo passes nil
+-- and takes the contract's own payout.
+local function rewardMember(src, cid, def, cashOverride)
     local stats = ensureStats(cid, Framework.GetName(src))
     local gang = Gangs.GetByCitizen(cid)
     local newXp = stats.xp + (def.xp or 0)
@@ -451,7 +481,16 @@ local function rewardMember(src, cid, def)
 
     if gang then Gangs.AddMemberRep(cid, def.reward, 'task:' .. def.id) end
 
-    Framework.Notify(src, ('Job complete — +%d rep, +%d XP.'):format(def.reward, def.xp or 0), 'success')
+    -- Contracts pay cash on top of rep. Co-op splits the cash across the
+    -- crew (the bonus is applied before the split by the caller), but XP
+    -- and rep are never split — everyone gets the full amount.
+    local cash = math.floor(cashOverride or def.cash or 0)
+    if cash > 0 then
+        Framework.AddMoney(src, 'cash', cash, 'gang-contract')
+    end
+
+    Framework.Notify(src, ('Job complete — +%d rep, +%d XP%s.'):format(
+        def.reward, def.xp or 0, cash > 0 and (', $' .. cash) or ''), 'success')
     if leveledUp then
         Framework.Notify(src, ('Rank up! You are now a %s.'):format(taskLevelDefFor(newLevel).title), 'success')
     end
@@ -460,7 +499,8 @@ local function rewardMember(src, cid, def)
         Framework.Notify(src, ('Achievement unlocked: %s'):format(label), 'success')
     end
     if gang then
-        Gangs.Log(gang.id, ('%s completed "%s" (+%d rep)'):format(Framework.GetName(src) or cid, def.label, def.reward))
+        Gangs.Log(gang.id, ('%s completed "%s" (+%d rep)'):format(
+            Framework.GetName(src) or cid, def.label, def.reward), 'contract')
     end
 end
 
@@ -472,9 +512,16 @@ local function completeTask(src, def)
             active[m] = nil
             TriggerClientEvent('XS-CriminalTablet:client:taskUpdate', m, nil)
         end
+
+        -- Crew jobs pay a bonus on the cash, then split the total evenly.
+        -- Rep and XP are deliberately not split — every member banks the
+        -- full amount, which is what makes running as a crew worth it.
+        local pot = math.floor((def.cash or 0) * (1 + Config.TasksCoop.rewardBonusPct / 100))
+        local share = #job.crew > 0 and math.floor(pot / #job.crew) or 0
+
         for _, m in ipairs(job.crew) do
             local mcid = job.cids[m]
-            if mcid then rewardMember(m, mcid, def) end
+            if mcid then rewardMember(m, mcid, def, share) end
         end
     else
         active[src] = nil

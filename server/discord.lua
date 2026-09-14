@@ -1,6 +1,6 @@
 -- ─────────────────────────────────────────────────────────────
--- Discord webhook logging. Three categories, three separate webhook URLs
--- (Config.Discord), so admins/players/economy watchers can each have
+-- Discord webhook logging. Four categories, four separate webhook URLs
+-- (Config.Discord), so admins/players/economy/war watchers can each have
 -- their own channel without one drowning out the others. Any category
 -- left blank in config is silently skipped — never required.
 -- ─────────────────────────────────────────────────────────────
@@ -10,6 +10,7 @@ local urlByCategory = {
     admin = Config.Discord.adminWebhook,
     gang = Config.Discord.gangWebhook,
     economy = Config.Discord.economyWebhook,
+    war = Config.Discord.warWebhook,
 }
 
 Discord.Color = {

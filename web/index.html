@@ -9,572 +9,1166 @@
     <title>XS-CriminalTablet</title>
 </head>
 <body>
-    <div id="root" class="hidden">
-        <div class="device">
-            <div class="device-corner tl"></div>
-            <div class="device-corner tr"></div>
-            <div class="device-corner bl"></div>
-            <div class="device-corner br"></div>
 
-            <div id="bootScreen" class="boot-screen">
+<!-- ══════════════════════════════════════════════════════════
+     PLAYER TABLET
+     ══════════════════════════════════════════════════════════ -->
+<div id="root" class="hidden">
+    <div class="device">
+        <div class="device-bezel"></div>
+        <div class="device-corner tl"></div>
+        <div class="device-corner tr"></div>
+        <div class="device-corner bl"></div>
+        <div class="device-corner br"></div>
+
+        <div id="bootScreen" class="boot-screen">
+            <div class="boot-inner">
+                <div class="boot-mark"><i class="fas fa-satellite-dish"></i></div>
                 <div id="bootLines" class="boot-lines"></div>
             </div>
-
-            <!-- App rail: makes the "device hosting apps" concept visible -->
-            <aside class="rail">
-                <div class="rail-logo">C</div>
-                <nav id="appRail" class="rail-apps"></nav>
-                <button id="powerBtn" class="rail-power" title="Close"><i class="fas fa-power-off"></i> Close</button>
-            </aside>
-
-            <!-- App surface -->
-            <main class="surface">
-                <header class="statusbar">
-                    <div class="status-left">
-                        <span id="gangName" class="gang-name">No affiliation</span>
-                        <span id="gangTier" class="tier-chip">—</span>
-                    </div>
-                    <div class="status-right">
-                        <span class="signal">SECURE LINK</span>
-                        <span id="clock" class="clock">--:--</span>
-                    </div>
-                </header>
-
-                <!-- BOOSTING: open to everyone, gang or not, no gang tie-in at all -->
-                <section id="viewBoosting" class="view hidden">
-                    <nav class="tabs">
-                        <button class="tab is-active" data-tab="boost-job">Job</button>
-                        <button class="tab" data-tab="boost-crew">Crew</button>
-                        <button class="tab" data-tab="boost-intel">Intel</button>
-                        <button class="tab" data-tab="boost-perks">Perks</button>
-                        <button class="tab" data-tab="boost-leaderboard">Leaderboard</button>
-                        <button class="tab" data-tab="boost-badges">Badges</button>
-                    </nav>
-
-                    <!-- JOB -->
-                    <div class="tabview is-active" data-tabview="boost-job">
-                        <div class="boost-level-card">
-                            <div class="boost-level-label">
-                                <span id="boostLevelNum" class="boost-level-num">1</span>
-                                <span id="boostLevelLabel" class="muted">Joyrider</span>
-                            </div>
-                            <div class="overview-progress-track">
-                                <div id="boostXpFill" class="overview-progress-fill"></div>
-                            </div>
-                            <span id="boostXpLabel" class="muted">0 XP</span>
-                        </div>
-                        <div class="boost-stats-row">
-                            <div class="boost-stat"><span id="boostTotalCount">0</span><span class="muted">Cars boosted</span></div>
-                            <div class="boost-stat"><span id="boostTotalCash">$0</span><span class="muted">Total earned</span></div>
-                        </div>
-                        <div id="boostActiveStatus" class="muted hidden"></div>
-                        <button id="boostActionBtn" class="btn btn-accent boost-action-btn">Start Job</button>
-                        <button id="cancelBoostBtn" class="btn btn-ghost hidden">Cancel active job</button>
-                    </div>
-
-                    <!-- CREW -->
-                    <div class="tabview" data-tabview="boost-crew">
-                        <h2 class="boost-section-heading">Co-op crew <span class="wanted-flag">HARDER</span></h2>
-                        <div id="boostCrewList" class="member-list"></div>
-                        <div class="admin-form">
-                            <div class="player-search">
-                                <input id="boostInviteId" type="text" autocomplete="off" placeholder="player name or ID" />
-                                <div class="player-search-results hidden"></div>
-                            </div>
-                            <button id="boostInviteBtn" class="btn btn-ghost">Invite</button>
-                            <button id="boostStartCoopBtn" class="btn btn-accent hidden">Start Co-op Job</button>
-                            <button id="boostCancelCrewBtn" class="btn btn-ghost hidden">Disband crew</button>
-                        </div>
-                    </div>
-
-                    <!-- INTEL -->
-                    <div class="tabview" data-tabview="boost-intel">
-                        <div id="boostWantedSection" class="hidden">
-                            <h2 class="boost-section-heading">Wanted vehicles <span class="wanted-flag">BONUS</span></h2>
-                            <div id="boostWantedList" class="member-list"></div>
-                        </div>
-
-                        <h2 class="boost-section-heading">Possible vehicles at your level</h2>
-                        <div id="boostVehiclePreview" class="member-list"></div>
-
-                        <h2 class="boost-section-heading">Recent activity</h2>
-                        <div id="boostActivityFeed" class="log-list"></div>
-                    </div>
-
-                    <!-- PERKS -->
-                    <div class="tabview" data-tabview="boost-perks">
-                        <div class="row-between">
-                            <h2>Perks</h2>
-                            <span class="muted">Points: <span id="boostPerkPoints" class="handle-chip">0</span></span>
-                        </div>
-                        <div id="boostPerkList" class="member-list"></div>
-                    </div>
-
-                    <!-- BADGES -->
-                    <div class="tabview" data-tabview="boost-badges">
-                        <h2>Badges</h2>
-                        <div id="boostBadgeList" class="member-list"></div>
-                    </div>
-
-                    <!-- LEADERBOARD -->
-                    <div class="tabview" data-tabview="boost-leaderboard">
-                        <h2>Top Boosters</h2>
-                        <div id="boostLeaderboard" class="member-list"></div>
-                    </div>
-                </section>
-
-                <!-- NO GANG: admin-defined gangs only, nothing to do here -->
-                <section id="viewFound" class="view hidden">
-                    <div class="found-card">
-                        <h1>No active affiliation</h1>
-                        <p class="muted">Gangs are formed by admins. Apply on Discord to get one set up for your crew.</p>
-                    </div>
-                </section>
-
-                <!-- GANG OPS -->
-                <section id="viewGang" class="view hidden">
-                    <nav class="tabs">
-                        <button class="tab is-active" data-tab="main">Main</button>
-                        <button class="tab" data-tab="roster">Roster</button>
-                        <button class="tab" data-tab="territory">Territory</button>
-                        <div class="tab-more">
-                            <button class="tab-more-btn" type="button">More <i class="fas fa-chevron-down"></i></button>
-                            <div class="tab-more-menu hidden">
-                                <button class="tab" data-tab="tasks">Tasks</button>
-                                <button class="tab" data-tab="task-badges">Task Badges</button>
-                                <button class="tab" data-tab="task-leaderboard">Task Leaderboard</button>
-                                <button class="tab" data-tab="unlocks">Unlocks</button>
-                                <button class="tab" data-tab="bank">Treasury</button>
-                                <button class="tab" data-tab="perks">Perks</button>
-                                <button class="tab" data-tab="activity">Activity</button>
-                            </div>
-                        </div>
-                    </nav>
-
-                    <!-- MAIN OVERVIEW -->
-                    <div class="tabview is-active" data-tabview="main">
-                        <div class="overview-hero">
-                            <div class="overview-name" id="overviewName">—</div>
-                            <span id="overviewTier" class="tier-chip">—</span>
-                        </div>
-                        <div class="gang-level-row">
-                            <span id="overviewLevelBadge" class="gang-level-badge">LV 1</span>
-                            <span id="overviewLevelTitle" class="muted">Crew</span>
-                        </div>
-                        <div class="overview-progress">
-                            <div class="overview-progress-track">
-                                <div id="overviewProgressFill" class="overview-progress-fill"></div>
-                            </div>
-                            <span id="overviewProgressLabel" class="overview-progress-label muted">0 / 0 rep</span>
-                        </div>
-                        <div class="overview-grid">
-                            <div class="overview-card">
-                                <span class="muted">Treasury</span>
-                                <div class="overview-stat" id="overviewBank">$0</div>
-                            </div>
-                            <div class="overview-card">
-                                <span class="muted">Notoriety</span>
-                                <div class="overview-stat" id="overviewRep">0</div>
-                            </div>
-                            <div class="overview-card">
-                                <span class="muted">Members</span>
-                                <div class="overview-stat" id="overviewMembers">0</div>
-                            </div>
-                            <div class="overview-card">
-                                <span class="muted">Online</span>
-                                <div class="overview-stat" id="overviewOnline">0</div>
-                            </div>
-                            <div class="overview-card">
-                                <span class="muted">Territories held</span>
-                                <div class="overview-stat" id="overviewTerritories">0</div>
-                            </div>
-                            <div class="overview-card">
-                                <span class="muted">Your rank</span>
-                                <div class="overview-stat" id="overviewMyRank">—</div>
-                            </div>
-                        </div>
-                        <h2 style="margin-top: 22px;">Recent activity</h2>
-                        <div id="overviewLogs" class="log-list"></div>
-                    </div>
-
-                    <!-- ROSTER -->
-                    <div class="tabview" data-tabview="roster">
-                        <div class="row-between">
-                            <h2>Roster <span id="memberCount" class="count">0</span></h2>
-                            <div class="invite-box">
-                                <div class="player-search">
-                                    <input id="inviteId" type="text" autocomplete="off" placeholder="player name or ID" />
-                                    <div class="player-search-results hidden"></div>
-                                </div>
-                                <button id="inviteBtn" class="btn btn-ghost">Invite</button>
-                            </div>
-                        </div>
-                        <div class="muted">Your rep: <span id="myRep">0</span></div>
-
-                        <div class="row-between" style="margin-top:14px;">
-                            <h2 style="margin:0;">Top contributors</h2>
-                        </div>
-                        <div id="topContributors" class="member-list contributor-list"></div>
-
-                        <h2 style="margin-top:18px;">All members</h2>
-                        <div id="memberList" class="member-list"></div>
-                    </div>
-
-                    <!-- TASKS -->
-                    <div class="tabview" data-tabview="tasks">
-                        <div class="boost-level-card">
-                            <div class="boost-level-label">
-                                <span id="taskRankNum" class="boost-level-num">1</span>
-                                <span id="taskRankTitle" class="muted">Rookie</span>
-                            </div>
-                            <div class="overview-progress-track">
-                                <div id="taskXpFill" class="overview-progress-fill"></div>
-                            </div>
-                            <span id="taskXpLabel" class="muted">0 XP</span>
-                        </div>
-                        <div class="boost-stats-row">
-                            <div class="boost-stat"><span id="taskTotalCompleted">0</span><span class="muted">Jobs completed</span></div>
-                        </div>
-
-                        <div class="row-between" style="margin-top:18px;">
-                            <h2>Available jobs</h2>
-                            <button id="cancelTaskBtn" class="btn btn-ghost hidden">Cancel active job</button>
-                        </div>
-                        <div id="taskList" class="member-list"></div>
-
-                        <h2 class="boost-section-heading">Co-op crew <span class="wanted-flag">HARDER</span></h2>
-                        <div id="taskCrewList" class="member-list"></div>
-                        <div class="admin-form">
-                            <div class="player-search">
-                                <input id="taskInviteId" type="text" autocomplete="off" placeholder="player name or ID" />
-                                <div class="player-search-results hidden"></div>
-                            </div>
-                            <button id="taskInviteBtn" class="btn btn-ghost">Invite</button>
-                        </div>
-                        <div id="taskCoopPicker" class="member-list hidden"></div>
-                        <button id="taskCancelCrewBtn" class="btn btn-ghost hidden">Disband crew</button>
-
-                        <div class="row-between" style="margin-top: 22px;">
-                            <h2>Dealer</h2>
-                        </div>
-                        <div class="member">
-                            <span class="member-name">Call Dealer</span>
-                            <span id="dealerStatus" class="member-rank">—</span>
-                            <div class="member-actions">
-                                <button id="callDealerBtn" class="btn btn-ghost">Call</button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- TASK BADGES -->
-                    <div class="tabview" data-tabview="task-badges">
-                        <h2>Task Badges</h2>
-                        <div id="taskBadgeList" class="member-list"></div>
-                    </div>
-
-                    <!-- TASK LEADERBOARD -->
-                    <div class="tabview" data-tabview="task-leaderboard">
-                        <h2>Top Operatives (your gang)</h2>
-                        <div id="taskLeaderboard" class="member-list"></div>
-                    </div>
-
-                    <!-- TERRITORY (signature element) -->
-                    <div class="tabview" data-tabview="territory">
-                        <h2>Territory control</h2>
-                        <div class="territory-map-wrap">
-                            <div id="territoryMap" class="territory-map"></div>
-                            <div class="map-compass">N<span class="map-compass-arrow">▲</span></div>
-                        </div>
-                        <div id="territoryDetail" class="member territory-detail hidden"></div>
-                        <div id="turfGrid" class="turf-grid"></div>
-                    </div>
-
-                    <!-- UNLOCKS -->
-                    <div class="tabview" data-tabview="unlocks">
-                        <h2>Tier unlocks &amp; vault</h2>
-                        <div id="unlockList" class="member-list"></div>
-                    </div>
-
-                    <!-- TREASURY (bank-statement feel) -->
-                    <div class="tabview" data-tabview="bank">
-                        <div class="bankcard">
-                            <div class="bankcard-top">
-                                <span class="muted">CREW TREASURY</span>
-                                <span class="bankcard-chip">●●●● XYRAL</span>
-                            </div>
-                            <div id="bankBalance" class="bank-balance">$0</div>
-                            <div class="treasury-rep">
-                                <span id="treasuryTier" class="tier-chip">—</span>
-                                <span id="treasuryRep" class="muted">0 rep</span>
-                            </div>
-                        </div>
-                        <div class="treasury-actions">
-                            <input id="bankAmount" type="number" placeholder="amount" />
-                            <button id="depositBtn" class="btn btn-accent">Deposit</button>
-                            <button id="withdrawBtn" class="btn btn-ghost">Withdraw</button>
-                        </div>
-                        <p class="muted">No forced dues — deposit whenever you want. Anyone can put money in; withdrawing needs the bank permission.</p>
-
-                        <h2 style="margin-top:18px;">Transaction ledger</h2>
-                        <div id="bankLedger" class="ledger-list"></div>
-
-                        <p class="muted" style="margin-top:14px;">The vault is a physical container — place it from the Unlocks tab, then open it in person.</p>
-                    </div>
-
-                    <!-- GANG PERKS (upgrade tree) -->
-                    <div class="tabview" data-tabview="perks">
-                        <div class="row-between">
-                            <h2>Gang Perks</h2>
-                            <span class="muted">Points: <span id="gangPerkPoints" class="handle-chip">0</span></span>
-                        </div>
-                        <p class="muted">Boss-only. Buy down each branch in order — permanent, gang-wide upgrades earned by leveling up.</p>
-                        <div id="perkTree" class="perk-tree"></div>
-                    </div>
-
-                    <!-- ACTIVITY -->
-                    <div class="tabview" data-tabview="activity">
-                        <h2>Activity log</h2>
-                        <div id="logList" class="log-list"></div>
-                    </div>
-                </section>
-
-                <!-- BLACKMARKET -->
-                <section id="viewBlackmarket" class="view hidden">
-                    <div class="row-between">
-                        <h2>Blackmarket</h2>
-                        <div class="handle-edit">
-                            <span class="muted">Your handle:</span>
-                            <span id="myHandle" class="handle-chip">—</span>
-                            <button id="editHandleBtn" class="icon-btn" title="Change handle">✎</button>
-                        </div>
-                    </div>
-                    <div id="handleEditRow" class="admin-form hidden">
-                        <input id="handleInput" type="text" maxlength="24" placeholder="new handle (3-24 chars, letters/numbers/-/_)" />
-                        <button id="saveHandleBtn" class="btn btn-ghost">Save</button>
-                        <button id="cancelHandleBtn" class="btn btn-ghost">Cancel</button>
-                    </div>
-                    <nav class="tabs">
-                        <button class="tab is-active" data-tab="world">World</button>
-                        <button class="tab" data-tab="dms">Direct Messages</button>
-                    </nav>
-
-                    <!-- WORLD FEED -->
-                    <div class="tabview is-active" data-tabview="world">
-                        <div id="worldFeed" class="chat-feed"></div>
-                        <div class="chat-composer">
-                            <input id="worldInput" type="text" maxlength="280" placeholder="Post to the feed..." />
-                            <button id="worldSendBtn" class="btn btn-accent">Send</button>
-                        </div>
-                    </div>
-
-                    <!-- DMS -->
-                    <div class="tabview" data-tabview="dms">
-                        <div id="dmThreadList" class="member-list"></div>
-                        <div id="dmConversation" class="hidden">
-                            <button id="dmBackBtn" class="btn btn-ghost dm-back">‹ Back</button>
-                            <div id="dmFeed" class="chat-feed"></div>
-                            <div class="chat-composer">
-                                <input id="dmInput" type="text" maxlength="280" placeholder="Reply..." />
-                                <button id="dmSendBtn" class="btn btn-accent">Send</button>
-                            </div>
-                        </div>
-                        <div class="admin-form dm-new">
-                            <input id="dmNewHandle" type="text" placeholder="handle (e.g. ShadowFox-A1B2)" />
-                            <button id="dmNewBtn" class="btn btn-ghost">Message</button>
-                        </div>
-                    </div>
-                </section>
-            </main>
-            <div id="toastStack" class="toast-stack"></div>
-            <div id="inviteBanner" class="invite-banner hidden">
-                <div class="invite-banner-text">
-                    <span id="inviteTitle" class="invite-banner-title"></span>
-                    <span id="inviteBody" class="invite-banner-body"></span>
-                </div>
-                <div class="invite-banner-actions">
-                    <button id="inviteAccept" class="btn btn-accent">Accept</button>
-                    <button id="inviteDecline" class="btn btn-ghost">Decline</button>
-                </div>
-            </div>
         </div>
-    </div>
 
-    <div id="adminRoot" class="hidden">
-        <div class="device admin-device">
-            <div class="device-corner tl"></div>
-            <div class="device-corner tr"></div>
-            <div class="device-corner bl"></div>
-            <div class="device-corner br"></div>
-
-            <div id="adminBootScreen" class="boot-screen admin-boot">
-                <div id="adminBootLines" class="boot-lines admin-boot-lines"></div>
+        <!-- ── App rail ── -->
+        <aside class="rail">
+            <div class="rail-crest">
+                <div id="railCrest" class="crest">—</div>
+                <div class="crest-meta">
+                    <span id="railGang" class="crest-name">No crew</span>
+                    <span id="railRank" class="crest-rank">—</span>
+                </div>
             </div>
+            <nav id="appRail" class="rail-apps"></nav>
+            <div class="rail-foot">
+                <button id="powerBtn" class="rail-power" title="Close"><i class="fas fa-power-off"></i><span>Close</span></button>
+            </div>
+        </aside>
 
+        <!-- ── App surface ── -->
+        <main class="surface">
             <header class="statusbar">
                 <div class="status-left">
-                    <span class="gang-name">XyraL — Admin Tablet</span>
+                    <span id="gangName" class="gang-name">No affiliation</span>
+                    <span id="gangTier" class="chip chip-tier">—</span>
+                    <span id="gangLevelChip" class="chip chip-level">LV 1</span>
                 </div>
                 <div class="status-right">
-                    <span class="signal admin-signal">STAFF ACCESS</span>
-                    <button id="adminCloseBtn" class="status-close" title="Close">⏻</button>
+                    <span id="testModeChip" class="chip chip-test hidden"><i class="fas fa-flask"></i> TEST MODE</span>
+                    <span id="warChip" class="chip chip-war hidden"><i class="fas fa-crosshairs"></i> <span id="warChipText">WAR</span></span>
+                    <span class="signal"><i class="fas fa-lock"></i> SECURE</span>
+                    <span id="clock" class="clock">--:--</span>
                 </div>
             </header>
 
-            <main class="admin-surface">
+            <!-- ══ LOCKED (no gang) ══ -->
+            <section id="viewLocked" class="view hidden">
+                <div class="locked">
+                    <div class="locked-icon"><i class="fas fa-fingerprint"></i></div>
+                    <h1>No crew on file</h1>
+                    <p id="lockedMessage" class="muted"></p>
+                    <div class="locked-scan"></div>
+                </div>
+            </section>
+
+            <!-- ══ HUB ══ -->
+            <section id="viewHub" class="view hidden">
                 <nav class="tabs">
-                    <button class="tab is-active" data-tab="admin-dashboard">Dashboard</button>
-                    <button class="tab" data-tab="admin-gangs">Gangs</button>
-                    <button class="tab" data-tab="admin-zones">Zones</button>
-                    <button class="tab" data-tab="admin-boosting">Boosting</button>
-                    <button class="tab" data-tab="admin-blackmarket">Blackmarket</button>
-                    <button class="tab" data-tab="admin-dealer">Dealer</button>
+                    <button class="tab is-active" data-tab="hub-home">Home</button>
+                    <button class="tab" data-tab="hub-map">Live Map</button>
+                    <button class="tab" data-tab="hub-property">Property</button>
+                    <button class="tab" data-tab="hub-activity">Activity</button>
                 </nav>
 
-                <!-- DASHBOARD -->
-                <div class="tabview is-active" data-tabview="admin-dashboard">
-                    <div class="overview-grid" id="adminStatGrid">
-                        <div class="overview-card"><span class="muted">Gangs</span><div class="overview-stat" id="statGangCount">0</div></div>
-                        <div class="overview-card"><span class="muted">Zones assigned</span><div class="overview-stat" id="statZoneCount">0</div></div>
-                        <div class="overview-card"><span class="muted">Total gang bank</span><div class="overview-stat" id="statGangBank">$0</div></div>
-                        <div class="overview-card"><span class="muted">Boosting players</span><div class="overview-stat" id="statBoostPlayers">0</div></div>
-                        <div class="overview-card"><span class="muted">Cars boosted (all-time)</span><div class="overview-stat" id="statBoostTotal">0</div></div>
-                        <div class="overview-card"><span class="muted">Active boost jobs</span><div class="overview-stat" id="statBoostActive">0</div></div>
-                        <div class="overview-card"><span class="muted">World messages</span><div class="overview-stat" id="statChatMsgs">0</div></div>
-                        <div class="overview-card"><span class="muted">Handles issued</span><div class="overview-stat" id="statHandles">0</div></div>
+                <div class="tabview is-active" data-tabview="hub-home">
+                    <!-- Banner: only appears when something needs attention -->
+                    <div id="hubAlerts"></div>
+
+                    <div class="hero">
+                        <div class="hero-main">
+                            <div class="hero-label">
+                                <span id="heroName" class="hero-name">—</span>
+                                <span id="heroLevelTitle" class="hero-title">Crew</span>
+                            </div>
+                            <div id="tierRail" class="tier-rail"></div>
+                            <div class="hero-meters">
+                                <div class="meter">
+                                    <div class="meter-head">
+                                        <span class="meter-label">Rep</span>
+                                        <span id="heroRepLabel" class="meter-value">0 / 0</span>
+                                    </div>
+                                    <div class="track"><div id="heroRepFill" class="fill"></div></div>
+                                </div>
+                            </div>
+                            <div id="heroFacts" class="hero-facts"></div>
+                        </div>
+                        <div class="hero-ring">
+                            <svg viewBox="0 0 120 120" class="ring">
+                                <circle class="ring-bg" cx="60" cy="60" r="52"></circle>
+                                <circle id="heroRing" class="ring-fill" cx="60" cy="60" r="52"></circle>
+                            </svg>
+                            <div class="ring-center">
+                                <span id="heroLevelNum" class="ring-num">1</span>
+                                <span class="ring-cap">LEVEL</span>
+                            </div>
+                        </div>
                     </div>
-                    <h2 style="margin-top:22px;">Dealer status</h2>
-                    <div class="member">
-                        <span class="member-name">Cooldown</span>
-                        <span id="statDealerCooldown" class="member-rank">—</span>
+
+                    <div id="motdCard" class="motd hidden">
+                        <i class="fas fa-thumbtack"></i>
+                        <span id="motdText"></span>
+                        <button id="motdEditBtn" class="icon-btn hidden" title="Edit notice"><i class="fas fa-pen"></i></button>
+                    </div>
+                    <div id="motdEditRow" class="inline-form hidden">
+                        <input id="motdInput" type="text" maxlength="255" placeholder="Crew notice everyone sees..." />
+                        <button id="motdSaveBtn" class="btn btn-accent">Save</button>
+                        <button id="motdCancelBtn" class="btn btn-ghost">Cancel</button>
+                    </div>
+
+                    <h2 class="section-head"><span>Jump in</span></h2>
+                    <div id="hubCards" class="hub-grid"></div>
+
+                    <div class="hub-split">
+                        <div>
+                            <div class="row-between">
+                                <h2 class="section-head"><span>Crew online</span><span id="hubOnlineCount" class="count">0</span></h2>
+                            </div>
+                            <div id="hubOnline" class="tile-list"></div>
+                        </div>
+                        <div>
+                            <h2 class="section-head"><span>Latest</span></h2>
+                            <div id="overviewLogs" class="log-list"></div>
+                        </div>
                     </div>
                 </div>
 
-                <!-- GANGS -->
-                <div class="tabview" data-tabview="admin-gangs">
-                    <section class="admin-card">
-                        <h2>New gang</h2>
-                        <div class="admin-form">
-                            <input id="newGangName" type="text" placeholder="name (e.g. ballas)" />
-                            <input id="newGangLabelAdmin" type="text" placeholder="label (e.g. Ballas)" />
-                            <input id="newGangBoss" type="text" placeholder="boss citizenid" />
-                            <button id="adminCreateBtn" class="btn btn-accent">Create</button>
+                <div class="tabview" data-tabview="hub-map">
+                    <div class="map-wrap">
+                        <div id="hubMap" class="map"></div>
+                        <div class="map-legend">
+                            <span><i class="dot dot-mine"></i> Your crew</span>
+                            <span><i class="dot dot-hq"></i> HQ</span>
+                            <span><i class="dot dot-turf"></i> Your turf</span>
+                            <span><i class="dot dot-rival"></i> Rival turf</span>
                         </div>
+                    </div>
+                    <div class="row-between">
+                        <h2 class="section-head"><span>Crew online</span></h2>
+                        <button id="mapRefreshBtn" class="btn btn-ghost btn-sm"><i class="fas fa-rotate"></i> Refresh</button>
+                    </div>
+                    <div id="livePlayerList" class="tile-list"></div>
+                </div>
+
+                <div class="tabview" data-tabview="hub-property">
+                    <div class="row-between">
+                        <h2 class="section-head"><span>Unlocks &amp; property</span></h2>
+                        <span id="propertyTierNote" class="muted"></span>
+                    </div>
+                    <p class="hint"><i class="fas fa-circle-info"></i> <span id="propertyHint"></span></p>
+                    <div id="unlockGrid" class="unlock-grid"></div>
+                </div>
+
+                <div class="tabview" data-tabview="hub-activity">
+                    <div class="row-between">
+                        <h2 class="section-head"><span>Activity log</span></h2>
+                        <div id="logFilters" class="filter-row"></div>
+                    </div>
+                    <div id="logList" class="log-list"></div>
+                </div>
+            </section>
+
+            <!-- ══ ROSTER ══ -->
+            <section id="viewRoster" class="view hidden">
+                <nav class="tabs">
+                    <button class="tab is-active" data-tab="ros-members">Members</button>
+                    <button class="tab" data-tab="ros-ranks">Ranks &amp; Permissions</button>
+                </nav>
+
+                <div class="tabview is-active" data-tabview="ros-members">
+                    <div class="row-between">
+                        <h2 class="section-head">
+                            <span>Roster</span>
+                            <span id="memberCount" class="count">0</span>
+                        </h2>
+                        <div class="invite-box">
+                            <div class="player-search">
+                                <input id="inviteId" type="text" autocomplete="off" placeholder="player name or ID" />
+                                <div class="player-search-results hidden"></div>
+                            </div>
+                            <button id="inviteBtn" class="btn btn-accent"><i class="fas fa-user-plus"></i> Invite</button>
+                        </div>
+                    </div>
+
+                    <div class="roster-bar">
+                        <input id="memberFilter" type="text" placeholder="Search the roster..." class="search-input" />
+                        <span class="muted">Your rep: <strong id="myRep">0</strong></span>
+                    </div>
+
+                    <h2 class="section-head"><span>Top contributors</span></h2>
+                    <div id="topContributors" class="podium"></div>
+
+                    <h2 class="section-head"><span>All members</span></h2>
+                    <div id="memberList" class="tile-list"></div>
+
+                    <div class="danger-row">
+                        <button id="leaveGangBtn" class="btn btn-danger btn-sm"><i class="fas fa-door-open"></i> Leave crew</button>
+                    </div>
+                </div>
+
+                <div class="tabview" data-tabview="ros-ranks">
+                    <div class="row-between">
+                        <h2 class="section-head"><span>Rank ladder</span></h2>
+                        <div class="inline-form" id="rankAddRow">
+                            <input id="newRankName" type="text" maxlength="48" placeholder="new rank name" />
+                            <button id="addRankBtn" class="btn btn-accent"><i class="fas fa-plus"></i> Add</button>
+                        </div>
+                    </div>
+                    <p class="hint"><i class="fas fa-circle-info"></i> The boss rank always keeps every permission. You can only grant permissions your own rank already has.</p>
+                    <div id="rankList" class="rank-list"></div>
+                </div>
+            </section>
+
+            <!-- ══ TURF ══ -->
+            <section id="viewTurf" class="view hidden">
+                <div class="map-wrap">
+                    <div id="territoryMap" class="map"></div>
+                    <div class="map-compass">N<span class="map-compass-arrow">▲</span></div>
+                </div>
+
+                <div class="row-between">
+                    <h2 class="section-head"><span>Territory</span><span id="turfCount" class="count">0</span></h2>
+                    <div class="filter-row" id="turfFilters">
+                        <button class="pill is-active" data-turf="all">All</button>
+                        <button class="pill" data-turf="mine">Ours</button>
+                        <button class="pill" data-turf="rival">Rival turf</button>
+                    </div>
+                </div>
+
+                <div id="turfHere" class="turf-here hidden"></div>
+                <div id="turfGrid" class="turf-grid"></div>
+            </section>
+
+            <!-- ══ WAR ROOM ══ -->
+            <section id="viewWar" class="view hidden">
+                <div id="stashBanner" class="stash-banner hidden"></div>
+                <div id="warActive" class="war-active hidden"></div>
+
+                <nav class="tabs">
+                    <button class="tab is-active" data-tab="war-rivals">Rivals</button>
+                    <button class="tab" data-tab="war-history">History</button>
+                </nav>
+
+                <div class="tabview is-active" data-tabview="war-rivals">
+                    <div class="stat-grid stat-grid-sm" id="warStats"></div>
+                    <p class="hint"><i class="fas fa-circle-info"></i> <span id="warHint"></span></p>
+                    <div id="rivalList" class="tile-list"></div>
+                </div>
+
+                <div class="tabview" data-tabview="war-history">
+                    <h2 class="section-head"><span>Past engagements</span></h2>
+                    <div id="warHistory" class="log-list"></div>
+                </div>
+            </section>
+
+            <!-- ══ CONTRACTS ══ -->
+            <section id="viewContracts" class="view hidden">
+                <nav class="tabs">
+                    <button class="tab is-active" data-tab="con-board">Board</button>
+                    <button class="tab" data-tab="con-crew">Crew</button>
+                    <button class="tab" data-tab="con-badges">Badges</button>
+                    <button class="tab" data-tab="con-leaderboard">Leaderboard</button>
+                </nav>
+
+                <div class="tabview is-active" data-tabview="con-board">
+                    <div class="rank-card">
+                        <div class="rank-card-left">
+                            <span id="taskRankNum" class="rank-num">1</span>
+                            <div>
+                                <div id="taskRankTitle" class="rank-title">Rookie</div>
+                                <div id="taskTotalCompleted" class="muted">0 jobs completed</div>
+                            </div>
+                        </div>
+                        <div class="rank-card-right">
+                            <div class="track"><div id="taskXpFill" class="fill"></div></div>
+                            <span id="taskXpLabel" class="muted">0 XP</span>
+                        </div>
+                    </div>
+
+                    <div class="row-between">
+                        <h2 class="section-head"><span>Board</span></h2>
+                        <div class="row-right">
+                            <span id="boardRotation" class="muted"></span>
+                            <button id="cancelTaskBtn" class="btn btn-danger btn-sm hidden">Cancel active job</button>
+                        </div>
+                    </div>
+                    <div class="filter-row" id="contractFilters"></div>
+                    <div id="taskList" class="contract-grid"></div>
+
+                    <h2 class="section-head"><span>Dealer</span></h2>
+                    <div class="tile">
+                        <div class="tile-main">
+                            <span class="tile-name">Call the dealer</span>
+                            <span id="dealerStatus" class="tile-sub">—</span>
+                        </div>
+                        <div class="tile-actions">
+                            <button id="callDealerBtn" class="btn btn-ghost btn-sm">Call</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tabview" data-tabview="con-crew">
+                    <h2 class="section-head"><span>Co-op crew</span><span class="flag">HARDER</span></h2>
+                    <div id="taskCrewList" class="tile-list"></div>
+                    <div class="inline-form">
+                        <div class="player-search">
+                            <input id="taskInviteId" type="text" autocomplete="off" placeholder="crew member name or ID" />
+                            <div class="player-search-results hidden"></div>
+                        </div>
+                        <button id="taskInviteBtn" class="btn btn-ghost">Invite</button>
+                        <button id="taskCancelCrewBtn" class="btn btn-danger hidden">Disband</button>
+                    </div>
+                    <div id="taskCoopPicker" class="contract-grid hidden"></div>
+                </div>
+
+                <div class="tabview" data-tabview="con-badges">
+                    <h2 class="section-head"><span>Badges</span></h2>
+                    <div id="taskBadgeList" class="badge-grid"></div>
+                </div>
+
+                <div class="tabview" data-tabview="con-leaderboard">
+                    <h2 class="section-head"><span>Top operatives in your crew</span></h2>
+                    <div id="taskLeaderboard" class="tile-list"></div>
+                </div>
+            </section>
+
+            <!-- ══ GARAGE ══ -->
+            <section id="viewGarage" class="view hidden">
+                <div class="row-between">
+                    <h2 class="section-head"><span>Gang garage</span><span id="garageSlots" class="count">0 / 0</span></h2>
+                    <div class="row-right">
+                        <button id="garageStoreBtn" class="btn btn-accent btn-sm"><i class="fas fa-square-parking"></i> Store current vehicle</button>
+                    </div>
+                </div>
+                <p class="hint"><i class="fas fa-circle-info"></i> <span id="garageHint"></span></p>
+                <div id="garageList" class="tile-list"></div>
+            </section>
+
+            <!-- ══ GRAFFITI STUDIO ══ -->
+            <section id="viewGraffiti" class="view hidden">
+                <nav class="tabs">
+                    <button class="tab is-active" data-tab="gf-library">Library</button>
+                    <button class="tab" data-tab="gf-text">Text</button>
+                    <button class="tab" data-tab="gf-draw">Freehand</button>
+                    <button class="tab" data-tab="gf-tags">Our Tags</button>
+                </nav>
+
+                <div class="tabview is-active" data-tabview="gf-library">
+                    <p class="hint"><i class="fas fa-circle-info"></i> Custom images are added to your crew by staff. Anything you make here yourself can be saved to the library too.</p>
+                    <div id="artGrid" class="art-grid"></div>
+                </div>
+
+                <div class="tabview" data-tabview="gf-text">
+                    <div class="studio">
+                        <div class="studio-canvas">
+                            <div id="textPreview" class="text-preview"><span id="textPreviewInner">CREW</span></div>
+                        </div>
+                        <div class="studio-controls">
+                            <label class="field">
+                                <span>Text</span>
+                                <input id="tagText" type="text" maxlength="24" value="CREW" />
+                            </label>
+                            <label class="field">
+                                <span>Font</span>
+                                <select id="tagFont"></select>
+                            </label>
+                            <div class="field-row">
+                                <label class="field">
+                                    <span>Fill</span>
+                                    <input id="tagFill" type="color" value="#3d7dff" />
+                                </label>
+                                <label class="field">
+                                    <span>Outline</span>
+                                    <input id="tagOutline" type="color" value="#101216" />
+                                </label>
+                            </div>
+                            <label class="field">
+                                <span>Outline thickness <em id="tagStrokeVal">8px</em></span>
+                                <input id="tagStroke" type="range" min="0" max="20" step="1" value="8" />
+                            </label>
+                            <label class="field">
+                                <span>Letter spacing <em id="tagSpacingVal">0px</em></span>
+                                <input id="tagSpacing" type="range" min="-10" max="24" step="1" value="0" />
+                            </label>
+                            <label class="field">
+                                <span>Slant <em id="tagSkewVal">0&deg;</em></span>
+                                <input id="tagSkew" type="range" min="-25" max="25" step="1" value="0" />
+                            </label>
+                            <label class="field">
+                                <span>Tilt <em id="tagRotateVal">0&deg;</em></span>
+                                <input id="tagRotate" type="range" min="-20" max="20" step="1" value="0" />
+                            </label>
+                            <div class="field-row">
+                                <label class="field">
+                                    <span>Case</span>
+                                    <select id="tagCase">
+                                        <option value="as">As typed</option>
+                                        <option value="upper">UPPERCASE</option>
+                                        <option value="lower">lowercase</option>
+                                    </select>
+                                </label>
+                                <label class="field">
+                                    <span>Glow</span>
+                                    <select id="tagGlow">
+                                        <option value="none">None</option>
+                                        <option value="soft">Soft shadow</option>
+                                        <option value="neon">Neon</option>
+                                        <option value="hard">Hard drop</option>
+                                    </select>
+                                </label>
+                            </div>
+                            <div class="studio-actions">
+                                <button id="sprayTextBtn" class="btn btn-accent"><i class="fas fa-spray-can"></i> Spray this</button>
+                                <button id="saveTextBtn" class="btn btn-ghost"><i class="fas fa-floppy-disk"></i> Save to library</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tabview" data-tabview="gf-draw">
+                    <div class="studio">
+                        <div class="studio-canvas">
+                            <canvas id="drawCanvas" width="512" height="512"></canvas>
+                        </div>
+                        <div class="studio-controls">
+                            <div class="field-row">
+                                <label class="field">
+                                    <span>Colour</span>
+                                    <input id="drawColor" type="color" value="#f5a524" />
+                                </label>
+                                <label class="field">
+                                    <span>Size</span>
+                                    <input id="drawSize" type="range" min="2" max="48" value="14" />
+                                </label>
+                            </div>
+                            <div class="swatch-row" id="drawSwatches"></div>
+                            <div class="studio-actions">
+                                <button id="drawUndoBtn" class="btn btn-ghost btn-sm"><i class="fas fa-rotate-left"></i> Undo</button>
+                                <button id="drawClearBtn" class="btn btn-ghost btn-sm"><i class="fas fa-eraser"></i> Clear</button>
+                            </div>
+                            <div class="studio-actions">
+                                <button id="sprayDrawBtn" class="btn btn-accent"><i class="fas fa-spray-can"></i> Spray this</button>
+                                <button id="saveDrawBtn" class="btn btn-ghost"><i class="fas fa-floppy-disk"></i> Save to library</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tabview" data-tabview="gf-tags">
+                    <div class="row-between">
+                        <h2 class="section-head"><span>Tags up right now</span><span id="tagCount" class="count">0</span></h2>
+                    </div>
+                    <div id="tagList" class="tile-list"></div>
+                </div>
+            </section>
+
+            <!-- ══ TREASURY ══ -->
+            <section id="viewTreasury" class="view hidden">
+                <nav class="tabs">
+                    <button class="tab is-active" data-tab="tre-bank">Treasury</button>
+                    <button class="tab" data-tab="tre-upgrades">Upgrades</button>
+                    <button class="tab" data-tab="tre-perks">Perk Tree</button>
+                </nav>
+
+                <div class="tabview is-active" data-tabview="tre-bank">
+                    <div class="bankcard">
+                        <div class="bankcard-top">
+                            <span class="muted">CREW TREASURY</span>
+                            <span class="bankcard-chip">●●●● XYRAL</span>
+                        </div>
+                        <div id="bankBalance" class="bank-balance">$0</div>
+                        <div class="bankcard-foot">
+                            <span id="treasuryTier" class="chip chip-tier">—</span>
+                            <span id="treasuryRep" class="muted">0 rep</span>
+                        </div>
+                    </div>
+
+                    <div class="inline-form">
+                        <input id="bankAmount" type="number" min="1" placeholder="amount" />
+                        <button id="depositBtn" class="btn btn-accent"><i class="fas fa-arrow-down"></i> Deposit</button>
+                        <button id="withdrawBtn" class="btn btn-ghost"><i class="fas fa-arrow-up"></i> Withdraw</button>
+                    </div>
+                    <p class="hint"><i class="fas fa-circle-info"></i> No forced dues — anyone can put money in. Taking it out needs the treasury permission.</p>
+
+
+                    <h2 class="section-head"><span>Transaction ledger</span></h2>
+                    <div id="bankLedger" class="ledger-list"></div>
+                </div>
+
+                <div class="tabview" data-tabview="tre-upgrades">
+                    <div class="row-between">
+                        <h2 class="section-head"><span>Treasury upgrades</span></h2>
+                        <span class="muted">Balance: <strong id="upgradeBank">$0</strong></span>
+                    </div>
+                    <p class="hint"><i class="fas fa-circle-info"></i> Bought with the crew's money. Separate from perk points, which you earn by levelling.</p>
+                    <div id="upgradeGrid" class="upgrade-grid"></div>
+                </div>
+
+                <div class="tabview" data-tabview="tre-perks">
+                    <div class="row-between">
+                        <h2 class="section-head"><span>Perk tree</span></h2>
+                        <span class="muted">Points: <strong id="gangPerkPoints" class="chip chip-points">0</strong></span>
+                    </div>
+                    <p class="hint"><i class="fas fa-circle-info"></i> Buy down each branch in order. Permanent, crew-wide, earned by levelling up.</p>
+                    <div id="perkTree" class="perk-tree"></div>
+                </div>
+            </section>
+
+            <!-- ══ STANDING ══ -->
+            <section id="viewStanding" class="view hidden">
+                <h2 class="section-head"><span>Street standing</span></h2>
+                <div id="standingBreakdown" class="stat-grid stat-grid-sm"></div>
+                <div id="standingTable" class="standings"></div>
+            </section>
+
+            <!-- ══ BLACKMARKET ══ -->
+            <section id="viewBlackmarket" class="view hidden">
+                <div class="row-between">
+                    <h2 class="section-head"><span>Blackmarket</span></h2>
+                    <div class="handle-edit">
+                        <span class="muted">Your handle</span>
+                        <span id="myHandle" class="chip chip-handle">—</span>
+                        <button id="editHandleBtn" class="icon-btn" title="Change handle"><i class="fas fa-pen"></i></button>
+                    </div>
+                </div>
+                <div id="handleEditRow" class="inline-form hidden">
+                    <input id="handleInput" type="text" maxlength="24" placeholder="new handle (3-24 chars, letters/numbers/-/_)" />
+                    <button id="saveHandleBtn" class="btn btn-accent">Save</button>
+                    <button id="cancelHandleBtn" class="btn btn-ghost">Cancel</button>
+                </div>
+
+                <nav class="tabs">
+                    <button class="tab is-active" data-tab="bm-world">World</button>
+                    <button class="tab" data-tab="bm-dms">Direct Messages</button>
+                </nav>
+
+                <div class="tabview is-active" data-tabview="bm-world">
+                    <div id="worldFeed" class="chat-feed"></div>
+                    <div class="chat-composer">
+                        <input id="worldInput" type="text" maxlength="280" placeholder="Post to the feed..." />
+                        <button id="worldSendBtn" class="btn btn-accent"><i class="fas fa-paper-plane"></i></button>
+                    </div>
+                </div>
+
+                <div class="tabview" data-tabview="bm-dms">
+                    <div id="dmThreadList" class="tile-list"></div>
+                    <div id="dmConversation" class="hidden">
+                        <button id="dmBackBtn" class="btn btn-ghost btn-sm dm-back"><i class="fas fa-chevron-left"></i> Back</button>
+                        <div id="dmFeed" class="chat-feed"></div>
+                        <div class="chat-composer">
+                            <input id="dmInput" type="text" maxlength="280" placeholder="Reply..." />
+                            <button id="dmSendBtn" class="btn btn-accent"><i class="fas fa-paper-plane"></i></button>
+                        </div>
+                    </div>
+                    <div class="inline-form dm-new">
+                        <input id="dmNewHandle" type="text" placeholder="handle (e.g. ShadowFox-A1B2)" />
+                        <button id="dmNewBtn" class="btn btn-ghost">Message</button>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <div id="toastStack" class="toast-stack"></div>
+
+        <div id="inviteBanner" class="invite-banner hidden">
+            <div class="invite-banner-text">
+                <span id="inviteTitle" class="invite-banner-title"></span>
+                <span id="inviteBody" class="invite-banner-body"></span>
+            </div>
+            <div class="invite-banner-actions">
+                <button id="inviteAccept" class="btn btn-accent">Accept</button>
+                <button id="inviteDecline" class="btn btn-ghost">Decline</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     FIELD RADIAL
+     ══════════════════════════════════════════════════════════ -->
+<div id="radialRoot" class="hidden">
+    <div class="radial-scrim"></div>
+    <div class="radial">
+        <svg id="radialSvg" viewBox="0 0 400 400"></svg>
+        <div class="radial-hub">
+            <span id="radialHubLabel" class="radial-hub-label">FIELD</span>
+            <span id="radialHubSub" class="radial-hub-sub">—</span>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     ADMIN TABLET
+     ══════════════════════════════════════════════════════════ -->
+<div id="adminRoot" class="hidden">
+    <div class="device admin-device">
+        <div class="device-bezel"></div>
+        <div class="device-corner tl"></div>
+        <div class="device-corner tr"></div>
+        <div class="device-corner bl"></div>
+        <div class="device-corner br"></div>
+
+        <div id="adminBootScreen" class="boot-screen admin-boot">
+            <div class="boot-inner">
+                <div class="boot-mark boot-mark-admin"><i class="fas fa-shield-halved"></i></div>
+                <div id="adminBootLines" class="boot-lines admin-boot-lines"></div>
+            </div>
+        </div>
+
+        <aside class="rail admin-rail">
+            <div class="rail-crest">
+                <div class="crest crest-admin">XS</div>
+                <div class="crest-meta">
+                    <span class="crest-name">Staff Console</span>
+                    <span class="crest-rank">Full access</span>
+                </div>
+            </div>
+            <nav class="rail-apps" id="adminRail">
+                <div class="rail-group">
+                    <div class="rail-group-head"><span>Overview</span></div>
+                    <button class="rail-app is-active" data-tab="admin-dashboard"><span class="rail-tile"><i class="fas fa-gauge-high"></i></span><span class="rail-label">Dashboard</span></button>
+                    <button class="rail-app" data-tab="admin-setup"><span class="rail-tile"><i class="fas fa-wand-magic-sparkles"></i></span><span class="rail-label">New Crew</span></button>
+                </div>
+                <div class="rail-group">
+                    <div class="rail-group-head"><span>Crews</span></div>
+                    <button class="rail-app" data-tab="admin-gangs"><span class="rail-tile"><i class="fas fa-users-gear"></i></span><span class="rail-label">Gangs</span></button>
+                    <button class="rail-app" data-tab="admin-zones"><span class="rail-tile"><i class="fas fa-draw-polygon"></i></span><span class="rail-label">Turf</span></button>
+                    <button class="rail-app" data-tab="admin-pricing"><span class="rail-tile"><i class="fas fa-tags"></i></span><span class="rail-label">Pricing</span></button>
+                    <button class="rail-app" data-tab="admin-blips"><span class="rail-tile"><i class="fas fa-location-dot"></i></span><span class="rail-label">Blips</span></button>
+                </div>
+                <div class="rail-group">
+                    <div class="rail-group-head"><span>Content</span></div>
+                    <button class="rail-app" data-tab="admin-graffiti"><span class="rail-tile"><i class="fas fa-spray-can"></i></span><span class="rail-label">Graffiti</span></button>
+                    <button class="rail-app" data-tab="admin-dealer"><span class="rail-tile"><i class="fas fa-handshake"></i></span><span class="rail-label">Dealer</span></button>
+                    <button class="rail-app" data-tab="admin-dealer-setup"><span class="rail-tile"><i class="fas fa-sliders"></i></span><span class="rail-label">Dealer Setup</span></button>
+                </div>
+                <div class="rail-group">
+                    <div class="rail-group-head"><span>Live</span></div>
+                    <button class="rail-app" data-tab="admin-war"><span class="rail-tile"><i class="fas fa-crosshairs"></i></span><span class="rail-label">War</span></button>
+                    <button class="rail-app" data-tab="admin-blackmarket"><span class="rail-tile"><i class="fas fa-comments"></i></span><span class="rail-label">Chat</span></button>
+                    <button class="rail-app" data-tab="admin-test"><span class="rail-tile"><i class="fas fa-flask"></i></span><span class="rail-label">Test Mode</span></button>
+                </div>
+            </nav>
+            <div class="rail-foot">
+                <button id="adminCloseBtn" class="rail-power" title="Close"><i class="fas fa-power-off"></i><span>Close</span></button>
+            </div>
+        </aside>
+
+        <main class="surface admin-surface">
+            <header class="statusbar">
+                <div class="status-left">
+                    <span class="gang-name">Gang Control</span>
+                    <span class="chip chip-danger">STAFF ACCESS</span>
+                </div>
+                <div class="status-right">
+                    <span class="signal admin-signal"><i class="fas fa-shield-halved"></i> ELEVATED</span>
+                    <span id="adminClock" class="clock">--:--</span>
+                </div>
+            </header>
+
+            <!-- DASHBOARD -->
+            <div class="tabview is-active" data-tabview="admin-dashboard">
+                <div class="stat-grid" id="adminStatGrid"></div>
+                <h2 class="section-head"><span>Live contests</span></h2>
+                <div id="adminContests" class="tile-list"></div>
+                <h2 class="section-head"><span>Dealer</span></h2>
+                <div id="adminDealerStatus" class="tile-list"></div>
+            </div>
+
+            <!-- DEALER SETUP -->
+            <div class="tabview" data-tabview="admin-dealer-setup">
+                <section class="admin-card">
+                    <div class="row-between">
+                        <h2 class="section-head"><span>Stock pool</span></h2>
+                        <span id="dealerPoolNote" class="muted"></span>
+                    </div>
+                    <p class="hint"><i class="fas fa-circle-info"></i> What the dealer can be carrying. Each call picks a random handful from this list and rolls a price between the two numbers.</p>
+                    <div class="form-grid">
+                        <label class="field"><span>Item name</span>
+                            <input id="dlItem" type="text" placeholder="weapon_pistol" /></label>
+                        <label class="field"><span>Label</span>
+                            <input id="dlLabel" type="text" placeholder="Pistol" /></label>
+                        <label class="field"><span>Price from</span>
+                            <input id="dlMin" type="number" min="0" value="0" /></label>
+                        <label class="field"><span>Price to</span>
+                            <input id="dlMax" type="number" min="0" value="0" /></label>
+                    </div>
+                    <div class="inline-form">
+                        <button id="dlAddItem" class="btn btn-accent btn-sm"><i class="fas fa-plus"></i> Add to pool</button>
+                    </div>
+                    <div id="dealerPoolList" class="tile-list"></div>
+                </section>
+
+                <section class="admin-card">
+                    <div class="row-between">
+                        <h2 class="section-head"><span>Where he shows up</span></h2>
+                        <span id="dealerSpawnNote" class="muted"></span>
+                    </div>
+                    <div class="inline-form">
+                        <input id="dlSpawnLabel" type="text" placeholder="Spot name (optional)" />
+                        <button id="dlSpawnHere" class="btn btn-ghost btn-sm"><i class="fas fa-location-crosshairs"></i> Where I'm stood</button>
+                        <button id="dlSpawnArm" class="btn btn-accent btn-sm"><i class="fas fa-crosshairs"></i> Drop on map</button>
+                    </div>
+                    <div class="map-wrap">
+                        <div id="dealerMap" class="map map-tall"></div>
+                        <div id="dealerMapHint" class="map-hint hidden">Click where he should stand.</div>
+                    </div>
+                    <div id="dealerSpawnList" class="tile-list"></div>
+                </section>
+
+                <section class="admin-card">
+                    <h2 class="section-head"><span>Settings</span></h2>
+                    <p class="hint"><i class="fas fa-circle-info"></i> These override config.lua and take effect immediately. Reset puts one back to whatever the file says.</p>
+                    <div class="form-grid">
+                        <label class="field"><span>Call cooldown (hours)</span>
+                            <input id="dlCooldown" type="number" min="0" step="0.5" data-setting="cooldownHours" /></label>
+                        <label class="field"><span>He waits (minutes)</span>
+                            <input id="dlTimeout" type="number" min="1" data-setting="timeoutMinutes" /></label>
+                        <label class="field"><span>Stock rerolls every (minutes)</span>
+                            <input id="dlRotate" type="number" min="1" data-setting="rotateMinutes" /></label>
+                        <label class="field"><span>Items carried</span>
+                            <input id="dlStockSize" type="number" min="1" max="20" data-setting="stockSize" /></label>
+                        <label class="field"><span>Ped model</span>
+                            <input id="dlPed" type="text" data-setting="pedModel" /></label>
+                        <label class="field"><span>Paid from</span>
+                            <input id="dlAccount" type="text" data-setting="account" /></label>
+                    </div>
+                    <div class="inline-form">
+                        <button id="dlSaveSettings" class="btn btn-accent btn-sm"><i class="fas fa-floppy-disk"></i> Save settings</button>
+                        <button id="dlResetSettings" class="btn btn-ghost btn-sm"><i class="fas fa-rotate-left"></i> Back to config.lua</button>
+                    </div>
+                </section>
+            </div>
+
+            <!-- SETUP WIZARD -->
+            <div class="tabview" data-tabview="admin-setup">
+                <div class="wiz">
+                    <ol id="wizSteps" class="wiz-steps"></ol>
+
+                    <div class="wiz-body">
+                        <!-- 1. identity -->
+                        <section class="wiz-pane is-active" data-step="1">
+                            <h2 class="section-head"><span>Who are they?</span></h2>
+                            <p class="hint"><i class="fas fa-circle-info"></i> The display name is what players see everywhere. The internal name is the id other resources use — lowercase, no spaces.</p>
+                            <div class="form-grid">
+                                <label class="field"><span>Display name</span>
+                                    <input id="wizLabel" type="text" maxlength="64" placeholder="The Lost MC" /></label>
+                                <label class="field"><span>Internal name</span>
+                                    <input id="wizName" type="text" maxlength="64" placeholder="lost_mc" /></label>
+                                <label class="field field-wide"><span>Crew colour</span>
+                                    <div class="swatch-row">
+                                        <input id="wizColor" type="color" value="#3d7dff" />
+                                        <div id="wizSwatches" class="swatches"></div>
+                                    </div></label>
+                            </div>
+                            <div class="wiz-preview">
+                                <div id="wizCrest" class="crest">—</div>
+                                <div class="crest-meta">
+                                    <span id="wizCrestName" class="crest-name">New crew</span>
+                                    <span class="crest-rank">how it reads on the tablet</span>
+                                </div>
+                            </div>
+                        </section>
+
+                        <!-- 2. boss -->
+                        <section class="wiz-pane" data-step="2">
+                            <h2 class="section-head"><span>Who runs it?</span></h2>
+                            <p class="hint"><i class="fas fa-circle-info"></i> Optional. A crew with no boss still exists — add one later from the Gangs tab. They must not already be in a gang.</p>
+                            <div class="inline-form">
+                                <input id="wizBossSearch" type="text" class="search-input" placeholder="Search online players..." />
+                                <input id="wizBoss" type="text" placeholder="or paste a citizenid" />
+                            </div>
+                            <div id="wizBossResults" class="tile-list"></div>
+                        </section>
+
+                        <!-- 3. limits -->
+                        <section class="wiz-pane" data-step="3">
+                            <h2 class="section-head"><span>Size and money</span></h2>
+                            <div class="form-grid">
+                                <label class="field"><span>Member cap <em>(0 = server default)</em></span>
+                                    <input id="wizCap" type="number" min="0" max="200" value="0" /></label>
+                                <label class="field"><span>Starting treasury</span>
+                                    <input id="wizBank" type="number" min="0" value="0" /></label>
+                                <label class="field field-wide"><span>Crew notice <em>(optional)</em></span>
+                                    <input id="wizMotd" type="text" maxlength="255" placeholder="Shown to every member on the tablet" /></label>
+                            </div>
+                        </section>
+
+                        <!-- 4. turf -->
+                        <section class="wiz-pane" data-step="4">
+                            <h2 class="section-head"><span>Their first block</span></h2>
+                            <p class="hint"><i class="fas fa-circle-info"></i> Draw a shape on the map, or skip and do it later from the Turf tab. There is no neutral turf — a zone belongs to a crew or nobody can see it.</p>
+                            <div class="inline-form">
+                                <input id="wizZoneKey" type="text" placeholder="zone key (e.g. grove)" />
+                                <input id="wizZoneLabel" type="text" placeholder="label (e.g. Grove Street)" />
+                            </div>
+                            <div class="map-wrap">
+                                <div id="wizMap" class="map map-tall"></div>
+                                <div id="wizMapHint" class="map-hint">Click the map to drop corners — three or more makes a block.</div>
+                            </div>
+                            <div class="inline-form">
+                                <button id="wizZoneUndo" class="btn btn-ghost btn-sm"><i class="fas fa-rotate-left"></i> Undo corner</button>
+                                <button id="wizZoneClear" class="btn btn-ghost btn-sm"><i class="fas fa-eraser"></i> Clear</button>
+                                <span id="wizZoneCount" class="muted">0 corners</span>
+                            </div>
+                        </section>
+
+                        <!-- 5. property -->
+                        <section class="wiz-pane" data-step="5">
+                            <h2 class="section-head"><span>Set them up</span></h2>
+                            <p class="hint"><i class="fas fa-circle-info"></i> Drop the crew's property straight onto the map. Anything you place here is granted to them outright — no tier, no purchase. They can move it later.</p>
+                            <div class="inline-form">
+                                <select id="wizPlaceKind"></select>
+                                <button id="wizPlaceArm" class="btn btn-accent btn-sm"><i class="fas fa-crosshairs"></i> Click the map to drop</button>
+                            </div>
+                            <div class="map-wrap">
+                                <div id="wizPlaceMap" class="map map-tall"></div>
+                                <div id="wizPlaceHint" class="map-hint hidden">Click where it should go.</div>
+                            </div>
+                            <div id="wizPlaceList" class="tile-list"></div>
+                        </section>
+
+                        <!-- 6. done -->
+                        <section class="wiz-pane" data-step="6">
+                            <h2 class="section-head"><span>Check it over</span></h2>
+                            <div id="wizSummary" class="wiz-summary"></div>
+                            <p id="wizError" class="wiz-error"></p>
+                        </section>
+                    </div>
+
+                    <div class="wiz-foot">
+                        <button id="wizBack" class="btn btn-ghost"><i class="fas fa-arrow-left"></i> Back</button>
+                        <div class="row-right">
+                            <button id="wizReset" class="btn btn-ghost btn-sm">Start over</button>
+                            <button id="wizNext" class="btn btn-accent">Next <i class="fas fa-arrow-right"></i></button>
+                            <button id="wizFinish" class="btn btn-accent hidden"><i class="fas fa-check"></i> Create the crew</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- BLIPS -->
+            <div class="tabview" data-tabview="admin-blips">
+                <section class="admin-card">
+                    <div class="row-between">
+                        <h2 class="section-head"><span>Crew blips</span></h2>
+                        <div class="row-right">
+                            <select id="blipGang"></select>
+                            <button id="blipArm" class="btn btn-accent btn-sm"><i class="fas fa-crosshairs"></i> Drop on map</button>
+                        </div>
+                    </div>
+                    <p class="hint"><i class="fas fa-circle-info"></i> A crew blip sits on the world map. "Crew only" shows it to that gang alone; "Everyone" puts it on every player's map.</p>
+                    <div class="form-grid">
+                        <label class="field"><span>Label</span>
+                            <input id="blipLabel" type="text" maxlength="64" placeholder="Lockup" /></label>
+                        <label class="field"><span>Sprite id</span>
+                            <input id="blipSprite" type="number" min="1" max="826" value="84" /></label>
+                        <label class="field"><span>Colour id</span>
+                            <input id="blipColor" type="number" min="0" max="85" value="0" /></label>
+                        <label class="field"><span>Scale</span>
+                            <input id="blipScale" type="number" min="0.2" max="2" step="0.1" value="0.8" /></label>
+                        <label class="field"><span>Seen by</span>
+                            <select id="blipVis">
+                                <option value="gang">Crew only</option>
+                                <option value="all">Everyone</option>
+                            </select></label>
+                        <label class="field checkbox">
+                            <input id="blipShort" type="checkbox" checked />
+                            <span>Only show when nearby</span>
+                        </label>
+                    </div>
+                    <div class="map-wrap">
+                        <div id="blipMap" class="map map-tall"></div>
+                        <div id="blipHint" class="map-hint hidden">Click where the blip should sit.</div>
+                    </div>
+                </section>
+
+                <section class="admin-card">
+                    <h2 class="section-head"><span>Placed blips</span></h2>
+                    <div id="blipList" class="tile-list"></div>
+                </section>
+            </div>
+
+            <!-- GANGS -->
+            <div class="tabview" data-tabview="admin-gangs">
+                <div class="admin-split">
+                    <section class="admin-card">
+                        <h2 class="section-head"><span>Create a crew</span></h2>
+                        <div class="form-grid">
+                            <label class="field">
+                                <span>Display name</span>
+                                <input id="newGangLabel" type="text" placeholder="Ballas" />
+                            </label>
+                            <label class="field">
+                                <span>Internal name</span>
+                                <input id="newGangName" type="text" placeholder="ballas" />
+                            </label>
+                            <label class="field field-wide">
+                                <span>Boss citizenid <em>(optional)</em></span>
+                                <input id="newGangBoss" type="text" placeholder="ABC12345" />
+                            </label>
+                            <label class="field">
+                                <span>Member cap <em>(0 = default)</em></span>
+                                <input id="newGangCap" type="number" min="0" placeholder="0" />
+                            </label>
+                            <label class="field">
+                                <span>Starting treasury</span>
+                                <input id="newGangBank" type="number" min="0" placeholder="0" />
+                            </label>
+                            <label class="field field-wide">
+                                <span>Starting turf <em>(optional)</em></span>
+                                <select id="newGangZone"></select>
+                            </label>
+                            <label class="field field-wide">
+                                <span>Crew notice <em>(optional)</em></span>
+                                <input id="newGangMotd" type="text" maxlength="255" placeholder="Shown to every member on the tablet" />
+                            </label>
+                            <div class="field field-wide">
+                                <span>Colour</span>
+                                <div class="color-picker">
+                                    <div id="newGangSwatches" class="swatch-row"></div>
+                                    <input id="newGangColor" type="color" value="#f5a524" />
+                                </div>
+                            </div>
+                            <label class="field field-wide checkbox">
+                                <input id="newGangSeedArt" type="checkbox" checked />
+                                <span>Seed the graffiti library with the stock catalogue</span>
+                            </label>
+                        </div>
+                        <div class="preview-strip">
+                            <div id="newGangPreview" class="crest">—</div>
+                            <div>
+                                <div id="newGangPreviewName" class="preview-name">New crew</div>
+                                <div class="muted">Preview</div>
+                            </div>
+                        </div>
+                        <button id="adminCreateBtn" class="btn btn-accent btn-block"><i class="fas fa-plus"></i> Create crew</button>
                         <div id="adminCreateError" class="form-error"></div>
                     </section>
 
                     <section class="admin-card">
-                        <h2>Gangs</h2>
+                        <div class="row-between">
+                            <h2 class="section-head"><span>Crews</span></h2>
+                            <input id="gangFilter" type="text" class="search-input" placeholder="Search crews..." />
+                        </div>
                         <div id="adminGangList" class="admin-gang-list"></div>
                     </section>
                 </div>
+            </div>
 
-                <!-- ZONES -->
-                <div class="tabview" data-tabview="admin-zones">
-                    <section class="admin-card">
-                        <h2>Zones</h2>
-                        <div class="admin-form">
-                            <input id="newZoneKey" type="text" placeholder="zone key (e.g. grove)" />
-                            <input id="newZoneLabel" type="text" placeholder="label (e.g. Grove Street)" />
-                            <button id="adminCreateZoneBtn" class="btn btn-accent">Create at my position</button>
+            <!-- ZONES -->
+            <div class="tabview" data-tabview="admin-zones">
+                <section class="admin-card">
+                    <div class="row-between">
+                        <h2 class="section-head"><span>Turf map</span></h2>
+                        <div class="row-right">
+                            <select id="mapZoneTarget"></select>
+                            <button id="mapDrawStart" class="btn btn-accent btn-sm"><i class="fas fa-draw-polygon"></i> Draw shape</button>
+                            <button id="mapDrawEdit" class="btn btn-ghost btn-sm"><i class="fas fa-pen-to-square"></i> Edit shape</button>
+                            <button id="mapDrawUndo" class="btn btn-ghost btn-sm hidden"><i class="fas fa-rotate-left"></i> Undo</button>
+                            <button id="mapDrawSave" class="btn btn-accent btn-sm hidden"><i class="fas fa-floppy-disk"></i> Save shape</button>
+                            <button id="mapDrawCancel" class="btn btn-ghost btn-sm hidden">Cancel</button>
                         </div>
-                        <div id="adminTerritoryList" class="admin-gang-list"></div>
-                    </section>
-                </div>
-
-                <!-- BOOSTING OVERSIGHT -->
-                <div class="tabview" data-tabview="admin-boosting">
-                    <section class="admin-card">
-                        <h2>Search players</h2>
-                        <div class="admin-form">
-                            <input id="boostSearchInput" type="text" placeholder="name or citizenid (blank = top 25)" />
-                            <button id="boostSearchBtn" class="btn btn-accent">Search</button>
-                        </div>
-                        <div id="boostSearchResults" class="admin-gang-list"></div>
-                    </section>
-                </div>
-
-                <!-- BLACKMARKET MODERATION -->
-                <div class="tabview" data-tabview="admin-blackmarket">
-                    <section class="admin-card">
-                        <h2>Resolve handle</h2>
-                        <div class="admin-form">
-                            <input id="resolveHandleInput" type="text" placeholder="handle (e.g. ShadowFox-A1B2)" />
-                            <button id="resolveHandleBtn" class="btn btn-ghost">Resolve</button>
-                            <span id="resolveHandleResult" class="muted"></span>
-                        </div>
-                    </section>
-
-                    <section class="admin-card">
-                        <h2>Recent world chat</h2>
-                        <div id="chatModList" class="admin-gang-list"></div>
-                    </section>
-                </div>
-
-                <!-- DEALER CONTROL -->
-                <div class="tabview" data-tabview="admin-dealer">
-                    <section class="admin-card">
-                        <div class="row-between">
-                            <h2>Current stock</h2>
-                            <div class="admin-form" style="margin:0;">
-                                <button id="dealerRerollBtn" class="btn btn-ghost">Force reroll</button>
-                                <button id="dealerClearCooldownBtn" class="btn btn-ghost">Clear cooldown</button>
-                            </div>
-                        </div>
-                        <div id="dealerStockList" class="admin-gang-list"></div>
-                    </section>
-                </div>
-            </main>
-            <div id="adminToastStack" class="toast-stack"></div>
-        </div>
-    </div>
-
-    <div id="craftRoot" class="hidden">
-        <div class="craft-frame">
-            <div class="craft-corner tl"></div>
-            <div class="craft-corner tr"></div>
-            <div class="craft-corner bl"></div>
-            <div class="craft-corner br"></div>
-
-            <header class="craft-header">
-                <span class="craft-title" id="craftBenchLabel">WORKBENCH</span>
-                <button id="craftCloseBtn" class="craft-close" title="Close">✕</button>
-            </header>
-
-            <div class="craft-body">
-                <div id="craftRecipeList" class="craft-recipe-list"></div>
-
-                <div class="craft-detail">
-                    <div id="craftEmpty" class="craft-empty">Select a recipe</div>
-                    <div id="craftSelected" class="craft-selected hidden">
-                        <div class="craft-selected-title" id="craftSelTitle">—</div>
-                        <div class="craft-io">
-                            <div class="craft-io-col">
-                                <span class="craft-io-label">Requires</span>
-                                <div id="craftInputs" class="craft-chips"></div>
-                            </div>
-                            <div class="craft-io-arrow">→</div>
-                            <div class="craft-io-col">
-                                <span class="craft-io-label">Produces</span>
-                                <div id="craftOutput" class="craft-chips"></div>
-                            </div>
-                        </div>
-
-                        <button id="craftMakeBtn" class="craft-make-btn">
-                            <svg class="craft-ring" viewBox="0 0 100 100">
-                                <circle class="craft-ring-bg" cx="50" cy="50" r="44"></circle>
-                                <circle id="craftRingFill" class="craft-ring-fill" cx="50" cy="50" r="44"></circle>
-                            </svg>
-                            <span id="craftMakeLabel" class="craft-make-label">CRAFT</span>
-                        </button>
                     </div>
+                    <div class="map-wrap">
+                        <div id="adminZoneMap" class="map map-tall"></div>
+                        <div id="mapDrawHint" class="map-hint hidden">Click the map to drop corners. Three or more makes a block.</div>
+                    </div>
+                    <div class="inline-form">
+                        <label class="field field-inline"><span>Ground height</span>
+                            <input id="mapDrawZ" type="number" step="1" value="30" /></label>
+                        <button id="mapZFromMe" class="btn btn-ghost btn-sm"><i class="fas fa-location-crosshairs"></i> From where I'm stood</button>
+                        <span id="mapDrawCount" class="muted"></span>
+                    </div>
+                </section>
+
+                <section class="admin-card">
+                    <h2 class="section-head"><span>New zone</span></h2>
+                    <div class="inline-form">
+                        <input id="newZoneKey" type="text" placeholder="zone key (e.g. grove)" />
+                        <input id="newZoneLabel" type="text" placeholder="label (e.g. Grove Street)" />
+                        <select id="newZoneGang"></select>
+                        <button id="adminCreateZoneBtn" class="btn btn-accent">Create</button>
+                    </div>
+                    <p class="hint"><i class="fas fa-circle-info"></i> Every zone belongs to a crew — there is no neutral turf, and a zone with nobody assigned stays invisible to players. Create it here, then give it a shape: draw it on the map above, drop a quick square where you're standing, or walk the corners in world.</p>
+                </section>
+
+                <section class="admin-card">
+                    <div class="row-between">
+                        <h2 class="section-head"><span>Zones</span></h2>
+                        <input id="zoneFilter" type="text" class="search-input" placeholder="Search zones..." />
+                    </div>
+                    <div id="adminTerritoryList" class="admin-gang-list"></div>
+                </section>
+            </div>
+
+            <!-- PRICING -->
+            <div class="tabview" data-tabview="admin-pricing">
+                <section class="admin-card">
+                    <h2 class="section-head"><span>Unlock prices</span></h2>
+                    <p class="hint"><i class="fas fa-circle-info"></i> Crews pay these out of their gang bank. config.lua only sets the defaults — whatever you type here is what they actually pay. Set a price to 0 to make an unlock free as soon as its tier lands.</p>
+                    <div id="priceUnlockList" class="price-list"></div>
+                </section>
+
+                <section class="admin-card">
+                    <h2 class="section-head"><span>Upgrade prices</span></h2>
+                    <div id="priceUpgradeList" class="price-list"></div>
+                </section>
+            </div>
+
+            <!-- GRAFFITI -->
+            <div class="tabview" data-tabview="admin-graffiti">
+                <section class="admin-card">
+                    <h2 class="section-head"><span>Give a crew some art</span></h2>
+                    <div class="form-grid">
+                        <label class="field">
+                            <span>Crew</span>
+                            <select id="gfGangSelect"></select>
+                        </label>
+                        <label class="field">
+                            <span>Label</span>
+                            <input id="gfArtLabel" type="text" placeholder="Ballas Throwie" />
+                        </label>
+                        <label class="field field-wide">
+                            <span>Direct image link</span>
+                            <input id="gfArtUrl" type="text" placeholder="https://.../tag.png" />
+                        </label>
+                    </div>
+                    <p class="hint"><i class="fas fa-triangle-exclamation"></i> Has to be a direct link to the image file, not a page that shows it. It loads inside every nearby player's game, so only use art you trust.</p>
+                    <div class="inline-form">
+                        <button id="gfAddUrlBtn" class="btn btn-accent"><i class="fas fa-image"></i> Add image</button>
+                        <select id="gfPresetSelect"></select>
+                        <button id="gfAddPresetBtn" class="btn btn-ghost">Add catalogue design</button>
+                    </div>
+                    <div id="gfArtList" class="art-grid"></div>
+                </section>
+
+                <section class="admin-card">
+                    <div class="row-between">
+                        <h2 class="section-head"><span>Tags in the world</span></h2>
+                        <button id="gfWipeGangBtn" class="btn btn-danger btn-sm">Wipe selected crew's tags</button>
+                    </div>
+                    <div id="gfTagList" class="admin-gang-list"></div>
+                </section>
+            </div>
+
+            <!-- WAR -->
+            <div class="tabview" data-tabview="admin-war">
+                <section class="admin-card">
+                    <div class="row-between">
+                        <h2 class="section-head"><span>Live engagements</span></h2>
+                        <button id="warRefreshBtn" class="btn btn-ghost btn-sm"><i class="fas fa-rotate"></i> Refresh</button>
+                    </div>
+                    <div id="adminWarList" class="admin-gang-list"></div>
+                </section>
+            </div>
+
+            <!-- TEST MODE -->
+            <div class="tabview" data-tabview="admin-test">
+                <section class="admin-card">
+                    <div class="row-between">
+                        <h2 class="section-head"><span>Solo test mode</span></h2>
+                        <button id="testStopAllBtn" class="btn btn-danger btn-sm">Stop everything</button>
+                    </div>
+                    <p class="hint"><i class="fas fa-circle-info"></i> Spawns hostile NPC defenders so one person can run the whole capture and raid loop without a rival crew online. Every player sees a TEST MODE badge while it's live.</p>
+                    <h2 class="section-head"><span>Zones</span></h2>
+                    <div id="testZoneList" class="admin-gang-list"></div>
+                    <h2 class="section-head"><span>Arm a crew's next raid</span></h2>
+                    <div id="testGangList" class="admin-gang-list"></div>
+                </section>
+            </div>
+
+            <!-- BLACKMARKET -->
+            <div class="tabview" data-tabview="admin-blackmarket">
+                <section class="admin-card">
+                    <h2 class="section-head"><span>Resolve a handle</span></h2>
+                    <div class="inline-form">
+                        <input id="resolveHandleInput" type="text" placeholder="handle (e.g. ShadowFox-A1B2)" />
+                        <button id="resolveHandleBtn" class="btn btn-ghost">Resolve</button>
+                        <span id="resolveHandleResult" class="muted"></span>
+                    </div>
+                </section>
+                <section class="admin-card">
+                    <h2 class="section-head"><span>Recent world chat</span></h2>
+                    <div id="chatModList" class="admin-gang-list"></div>
+                </section>
+            </div>
+
+            <!-- DEALER -->
+            <div class="tabview" data-tabview="admin-dealer">
+                <section class="admin-card">
+                    <div class="row-between">
+                        <h2 class="section-head"><span>Current stock</span></h2>
+                        <div class="inline-form" style="margin:0;">
+                            <button id="dealerRerollBtn" class="btn btn-ghost btn-sm">Force reroll</button>
+                            <button id="dealerClearCooldownBtn" class="btn btn-ghost btn-sm">Clear cooldown</button>
+                        </div>
+                    </div>
+                    <div id="dealerStockList" class="admin-gang-list"></div>
+                </section>
+            </div>
+        </main>
+        <div id="adminToastStack" class="toast-stack"></div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════
+     CRAFTING BENCH OVERLAY
+     ══════════════════════════════════════════════════════════ -->
+<div id="craftRoot" class="hidden">
+    <div class="craft-frame">
+        <div class="craft-corner tl"></div>
+        <div class="craft-corner tr"></div>
+        <div class="craft-corner bl"></div>
+        <div class="craft-corner br"></div>
+
+        <header class="craft-header">
+            <span class="craft-title" id="craftBenchLabel">WORKBENCH</span>
+            <button id="craftCloseBtn" class="craft-close" title="Close">✕</button>
+        </header>
+
+        <div class="craft-body">
+            <div id="craftRecipeList" class="craft-recipe-list"></div>
+            <div class="craft-detail">
+                <div id="craftEmpty" class="craft-empty">Select a recipe</div>
+                <div id="craftSelected" class="craft-selected hidden">
+                    <div class="craft-selected-title" id="craftSelTitle">—</div>
+                    <div class="craft-io">
+                        <div class="craft-io-col">
+                            <span class="craft-io-label">Requires</span>
+                            <div id="craftInputs" class="craft-chips"></div>
+                        </div>
+                        <div class="craft-io-arrow">→</div>
+                        <div class="craft-io-col">
+                            <span class="craft-io-label">Produces</span>
+                            <div id="craftOutput" class="craft-chips"></div>
+                        </div>
+                    </div>
+                    <button id="craftMakeBtn" class="craft-make-btn">
+                        <svg class="craft-ring" viewBox="0 0 100 100">
+                            <circle class="craft-ring-bg" cx="50" cy="50" r="44"></circle>
+                            <circle id="craftRingFill" class="craft-ring-fill" cx="50" cy="50" r="44"></circle>
+                        </svg>
+                        <span id="craftMakeLabel" class="craft-make-label">CRAFT</span>
+                    </button>
                 </div>
             </div>
         </div>
     </div>
+</div>
 
-    <script src="vendor/leaflet/leaflet.js"></script>
-    <script src="app.js"></script>
-    <script src="admin.js"></script>
-    <script src="craft.js"></script>
+<script src="vendor/leaflet/leaflet.js"></script>
+<script src="app.js"></script>
+<script src="graffiti.js"></script>
+<script src="admin.js"></script>
+<script src="mapedit.js"></script>
+<script src="craft.js"></script>
 </body>
 </html>

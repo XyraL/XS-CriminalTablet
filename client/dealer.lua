@@ -5,7 +5,7 @@
 -- stock menu lives in client/main.lua's talkToDealer handler — same one
 -- the old placed-ped version used.
 -- ─────────────────────────────────────────────────────────────
-local hasTarget = GetResourceState('ox_target') == 'started'
+local function hasTarget() return XSTarget.Ready() end
 local dealerPed = nil
 local dealerBlip = nil
 
@@ -18,7 +18,7 @@ end
 local function spawnDealer(coords, model)
     despawnDealer()
     if not IsModelValid(model) then
-        print(('^1[XS-CriminalTablet]^0 dealer model invalid (%s) — fix Config.Dealer.pedModel'):format(model))
+        print(('^1[XS-CriminalTablet]^0 dealer model invalid (%s) - fix Config.Dealer.pedModel'):format(model))
         return
     end
     lib.requestModel(model)
@@ -27,7 +27,7 @@ local function spawnDealer(coords, model)
     SetBlockingOfNonTemporaryEvents(dealerPed, true)
     FreezeEntityPosition(dealerPed, true)
 
-    if hasTarget then
+    if hasTarget() then
         exports.ox_target:addLocalEntity(dealerPed, {
             { name = 'xs_talk_dealer', label = 'Talk to Dealer', icon = 'fas fa-comments',
               onSelect = function() TriggerEvent('XS-CriminalTablet:client:talkToDealer') end },
@@ -52,11 +52,11 @@ CreateThread(function()
     if status and status.spawn then spawnDealer(status.spawn, Config.Dealer.pedModel) end
 end)
 
-if not hasTarget then
-    CreateThread(function()
-        local shown = false
-        while true do
-            Wait(500)
+CreateThread(function()
+    local shown = false
+    while true do
+        Wait(500)
+        if not hasTarget() then
             local near = dealerPed and DoesEntityExist(dealerPed)
                 and #(GetEntityCoords(PlayerPedId()) - GetEntityCoords(dealerPed)) <= 2.5
             if near then
@@ -67,5 +67,5 @@ if not hasTarget then
                 shown = false
             end
         end
-    end)
-end
+    end
+end)

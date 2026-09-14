@@ -4,11 +4,10 @@ lua54 'yes'
 
 name 'XS-CriminalTablet'
 author 'XyraL'
-description 'Modular criminal device for QBox/QBCore. Gangs, territory, rep, tasks, crafting, dealers and boosting.'
-version '1.1.0'
+description 'Gang-only criminal tablet for QBox/QBCore. Turf war, raids, garage, graffiti, contracts and a full in-world creator.'
+version '2.0.0'
 
 -- Works on QBox (qbx_core) OR QBCore (qb-core). The bridge auto-detects.
--- Shared deps both frameworks support cleanly:
 dependencies {
     'ox_lib',
     'oxmysql',
@@ -17,6 +16,7 @@ dependencies {
 shared_scripts {
     '@ox_lib/init.lua',
     'config.lua',
+    'shared/permissions.lua',
     'shared/apps.lua',
 }
 
@@ -25,12 +25,18 @@ client_scripts {
     'client/main.lua',
     'client/device.lua',
     'client/territory.lua',
+    'client/creator.lua',
     'client/admin.lua',
     'client/placeables.lua',
+    'client/blips.lua',
+    'client/graffiti.lua',
+    'client/garage.lua',
+    'client/war.lua',
+    'client/medic.lua',
+    'client/radial.lua',
     'client/drugs.lua',
     'client/dealer.lua',
     'client/crafting.lua',
-    'client/boosting.lua',
 }
 
 server_scripts {
@@ -39,19 +45,31 @@ server_scripts {
     'server/discord.lua',
     'server/main.lua',
     'server/gangs.lua',
+    'server/ranks.lua',
     'server/gangperks.lua',
+    'server/upgrades.lua',
     'server/territory.lua',
-    'server/notoriety.lua',
+    'server/capture.lua',
+    'server/rep.lua',
     'server/vault.lua',
     'server/placeables.lua',
+    'server/blips.lua',
     'server/bank.lua',
+    'server/prices.lua',
+    'server/garage.lua',
+    'server/graffiti.lua',
+    'server/war.lua',
+    'server/medic.lua',
+    'server/field.lua',
+    'server/analytics.lua',
     'server/tasks.lua',
+    'server/contracts.lua',
+    'server/testmode.lua',
     'server/admin.lua',
     'server/crafting.lua',
     'server/dealer.lua',
     'server/drugs.lua',
     'server/chat.lua',
-    'server/boosting.lua',
 }
 
 ui_page 'web/index.html'
@@ -61,7 +79,10 @@ files {
     'web/style.css',
     'web/app.js',
     'web/admin.js',
+    'web/mapedit.js',
     'web/craft.js',
+    'web/graffiti.js',
+    'web/tag.html',
     -- Leaflet is vendored (BSD-2) — NUI has no reliable internet, so no CDN.
     'web/vendor/leaflet/leaflet.js',
     'web/vendor/leaflet/leaflet.css',

@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────
--- Gang perk tree: three branches (vault/members/bench), each a chain of
+-- Gang perk tree: four branches (vault/members/bench/war), each a chain of
 -- tiers. Tier N in a branch requires tier N-1 in that SAME branch already
 -- owned — that's what makes it a tree instead of a flat shopping list.
 -- Effects stack additively across every owned tier.
@@ -16,11 +16,14 @@ end
 -- Aggregates every owned tier into one set of numbers the rest of the
 -- codebase can just apply — nothing else needs to know the tree shape.
 function GangPerks.ModifiersFor(gangId)
-    local owned = ownedPerkIds(gangId)
     local mods = {
         vaultSlotsBonus = 0, vaultWeightBonusPct = 0, maxMembersBonus = 0,
         craftTimePct = 0, bonusOutputChance = 0, tierBoost = 0,
+        captureSpeedPct = 0, defenceWeightPct = 0, raidCutPct = 0,
     }
+    if not gangId then return mods, {} end
+
+    local owned = ownedPerkIds(gangId)
     for _, branch in pairs(Config.GangPerks) do
         for _, t in ipairs(branch.tiers) do
             if owned[t.id] then
@@ -30,6 +33,9 @@ function GangPerks.ModifiersFor(gangId)
                 mods.craftTimePct = mods.craftTimePct + (t.craftTimePct or 0)
                 mods.bonusOutputChance = mods.bonusOutputChance + (t.bonusOutputChance or 0)
                 mods.tierBoost = mods.tierBoost + (t.tierBoost or 0)
+                mods.captureSpeedPct = mods.captureSpeedPct + (t.captureSpeedPct or 0)
+                mods.defenceWeightPct = mods.defenceWeightPct + (t.defenceWeightPct or 0)
+                mods.raidCutPct = mods.raidCutPct + (t.raidCutPct or 0)
             end
         end
     end
@@ -60,9 +66,15 @@ function GangPerks.GetTree(src)
             }
             prevOwned = owned[t.id] == true
         end
-        branches[#branches + 1] = { id = branchId, label = branch.label, icon = branch.icon, tiers = tiers }
+        branches[#branches + 1] = {
+            id = branchId, label = branch.label, icon = branch.icon,
+            order = branch.order or 99, tiers = tiers,
+        }
     end
-    table.sort(branches, function(a, b) return a.id < b.id end)
+    table.sort(branches, function(a, b)
+        if a.order == b.order then return a.id < b.id end
+        return a.order < b.order
+    end)
     return branches, points
 end
 
@@ -94,7 +106,12 @@ function GangPerks.BuyPerk(src, perkId)
 
     gang.perk_points = gang.perk_points - def.cost
     MySQL.update('UPDATE xs_gangs SET perk_points = perk_points - ? WHERE id = ?', { def.cost, gang.id })
-    Gangs.Log(gang.id, ('%s bought the "%s" perk'):format(Framework.GetName(src) or 'Someone', def.label))
+    Gangs.Log(gang.id, ('%s bought the "%s" perk'):format(Framework.GetName(src) or 'Someone', def.label), 'economy')
+
+    Gangs.InvalidateModifiers(gang.id)
+    -- Vault perks change the registered stash size, so re-register it.
+    if Vault and Vault.Refresh then Vault.Refresh(gang.id) end
+    Gangs.Broadcast(gang.id, 'perks', {})
     return true
 end
 

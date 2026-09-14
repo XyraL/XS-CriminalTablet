@@ -12,7 +12,7 @@ local byId = {}
 for _, r in ipairs(Config.Recipes) do byId[r.id] = r end
 
 local function tierIndex(tierName)
-    for i, t in ipairs(Config.Notoriety.tiers) do
+    for i, t in ipairs(Config.Rep.tiers) do
         if t.name == tierName then return i end
     end
     return 1
@@ -34,12 +34,12 @@ function Crafting.GetRecipes(src)
     local cid = Framework.GetCitizenId(src)
     local gang = cid and Gangs.GetByCitizen(cid)
     local mods = gang and GangPerks.ModifiersFor(gang.id) or { craftTimePct = 0 }
-    local myTierIdx = gang and (tierIndex(Notoriety.Tier(gang.notoriety)) + mods.tierBoost) or 0
+    local myTierIdx = gang and (tierIndex(Rep.Tier(gang.notoriety)) + mods.tierBoost) or 0
     local timeMult = 1 + (mods.craftTimePct or 0) / 100
 
     local list = {}
     for _, r in ipairs(Config.Recipes) do
-        local reqTier = r.tier or Config.Notoriety.tiers[1].name
+        local reqTier = r.tier or Config.Rep.tiers[1].name
         local reqIdx = tierIndex(reqTier)
         list[#list + 1] = {
             id = r.id, label = r.label, inputs = r.inputs, output = r.output,
@@ -59,8 +59,8 @@ function Crafting.Craft(src, recipeId)
     if not gang then return false, 'no gang' end
 
     local mods = GangPerks.ModifiersFor(gang.id)
-    local reqTier = recipe.tier or Config.Notoriety.tiers[1].name
-    if (tierIndex(Notoriety.Tier(gang.notoriety)) + mods.tierBoost) < tierIndex(reqTier) then
+    local reqTier = recipe.tier or Config.Rep.tiers[1].name
+    if (tierIndex(Rep.Tier(gang.notoriety)) + mods.tierBoost) < tierIndex(reqTier) then
         return false, ('requires %s tier'):format(reqTier)
     end
 
