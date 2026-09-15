@@ -374,6 +374,26 @@ on if your framework's gangs aren't already managed elsewhere.
   `config.lua`; guessed model names fail silently or with confusing errors.
 - `Config.Debug = true` prints bridge detection, rep changes and tick errors.
 
+### Upgrading from 2.0.0
+
+2.0.1 corrected the satellite map, which was out by up to 300m at the edges.
+Anything you made by **clicking** the map editor before that — zones drawn on
+the map, crew blips, staff-placed property — was saved where the click used to
+land, and fixing the map does not move it.
+
+From the server console:
+
+```
+xsmapfix          report what would change, writes nothing
+xsmapfix apply    fix it
+```
+
+Back up the database first. It is not safe to run twice, so it records that it
+ran and refuses a second pass. Zones you walked out with the in-world creator,
+props your crews placed themselves, graffiti and vehicles all came from real
+in-game positions and are left alone. Restart the resource afterwards so the
+cached copies reload. If you had not drawn anything yet, there is nothing to do.
+
 ## Architecture note
 
 Nothing in the UI talks to gang logic directly. The NUI calls a single relay

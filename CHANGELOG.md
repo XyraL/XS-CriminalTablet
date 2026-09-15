@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.0.1] - 2026-09-14
+
+### Fixed
+
+- **The live map was out by up to 300m.** The world rectangle the satellite render was believed to cover was the wrong shape — 9594 x 13208 against a 4096 x 6144 image, so X was stretched 9% against Y. Everything on the map read slightly wrong: near perfect in the middle, worst at the edges. It is now 9000 x 13500, which is exactly 2:3 like the render, refitted against the postal numbers drawn on the render itself. Same fix in XS-MDT, XS-AdminMenu and XS-Trucking, which share the map
+
+### Added
+
+- **`xsmapfix`** — server console command that repairs coordinates saved through the old map. Anything you created by CLICKING the map editor is stored where the click *used* to land, and correcting the map does not move it. Run `xsmapfix` for a report, `xsmapfix apply` to fix crew blips, staff placements and map-drawn zones. Zones walked out with the in-world creator, props the crew placed themselves, graffiti and vehicles all came from real positions and are left alone. Back up first — it is not safe to run twice, and it records that it ran so it will not
+
 ## [2.0.0] - 2026-09-14
 
 Big one. The tablet is gang-only now and most of it has been rebuilt.

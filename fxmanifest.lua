@@ -5,7 +5,7 @@ lua54 'yes'
 name 'XS-CriminalTablet'
 author 'XyraL'
 description 'Gang-only criminal tablet for QBox/QBCore. Turf war, raids, garage, graffiti, contracts and a full in-world creator.'
-version '2.0.0'
+version '2.0.1'
 
 -- Works on QBox (qbx_core) OR QBCore (qb-core). The bridge auto-detects.
 dependencies {
@@ -70,6 +70,7 @@ server_scripts {
     'server/dealer.lua',
     'server/drugs.lua',
     'server/chat.lua',
+    'server/migrate.lua',
 }
 
 ui_page 'web/index.html'
