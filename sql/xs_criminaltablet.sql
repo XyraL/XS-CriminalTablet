@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS `xs_gangs` (
     `perk_points`   INT             NOT NULL DEFAULT 0,
     `raid_cooldown` BIGINT          NOT NULL DEFAULT 0,
     `raid_immune`   BIGINT          NOT NULL DEFAULT 0,
+    `war_cooldown`  BIGINT          NOT NULL DEFAULT 0,
     `created_at`    TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
     UNIQUE KEY `uniq_name` (`name`)
@@ -342,6 +343,7 @@ ALTER TABLE `xs_gangs` ADD COLUMN IF NOT EXISTS `war_losses` INT NOT NULL DEFAUL
 ALTER TABLE `xs_gangs` ADD COLUMN IF NOT EXISTS `perk_points` INT NOT NULL DEFAULT 0;
 ALTER TABLE `xs_gangs` ADD COLUMN IF NOT EXISTS `raid_cooldown` BIGINT NOT NULL DEFAULT 0;
 ALTER TABLE `xs_gangs` ADD COLUMN IF NOT EXISTS `raid_immune` BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE `xs_gangs` ADD COLUMN IF NOT EXISTS `war_cooldown` BIGINT NOT NULL DEFAULT 0;
 
 ALTER TABLE `xs_gang_members` ADD COLUMN IF NOT EXISTS `rep` INT NOT NULL DEFAULT 0;
 ALTER TABLE `xs_gang_members` ADD COLUMN IF NOT EXISTS `last_seen` BIGINT NOT NULL DEFAULT 0;

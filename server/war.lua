@@ -17,6 +17,30 @@
 War = {}
 
 local active = {}        -- [warId] = live state
+
+-- Staging a raid or a war yields (the treasury charge, then the insert) well
+-- before the result lands in `active`, and War.ActiveFor only reads `active`.
+-- Two clicks on the button therefore both got through: two rows, two ticking
+-- states for one pair, and the cost taken twice. Claimed synchronously, so the
+-- second call loses before it can yield.
+--
+-- Stamped rather than flagged so a claim cannot outlive its call: if the
+-- insert throws between the charge and the release, the pair frees itself
+-- instead of locking that crew out of raiding until the next restart.
+local staging = {}
+local STAGING_TTL = 10
+
+local function claimPair(a, b)
+    local t = os.time()
+    if (staging[a] or 0) + STAGING_TTL > t or (staging[b] or 0) + STAGING_TTL > t then return false end
+    staging[a], staging[b] = t, t
+    return true
+end
+
+local function releasePair(a, b)
+    staging[a], staging[b] = nil, nil
+end
+
 local recentKills = {}   -- ['killerCid:victimCid'] = unix ms
 
 local function now() return os.time() * 1000 end
@@ -144,8 +168,17 @@ local function finish(state, winnerId, reason)
 
     local loserId = winnerId and (winnerId == state.attackerId and state.defenderId or state.attackerId) or nil
 
-    MySQL.update('UPDATE xs_gang_wars SET state = ?, winner_id = ?, finished_at = ?, score_attack = ?, score_defend = ? WHERE id = ?',
-        { 'finished', winnerId, now(), state.scoreAttack or 0, state.scoreDefend or 0, state.id })
+    if winnerId then
+        MySQL.update('UPDATE xs_gang_wars SET state = ?, winner_id = ?, finished_at = ?, score_attack = ?, score_defend = ? WHERE id = ?',
+            { 'finished', winnerId, now(), state.scoreAttack or 0, state.scoreDefend or 0, state.id })
+    else
+        -- A nil in the middle of the parameter list leaves a hole, and a Lua
+        -- table with a hole crosses the export boundary as a map instead of an
+        -- array, so nothing binds and the row stays 'active'. Both draws and
+        -- staff cancels land here.
+        MySQL.update('UPDATE xs_gang_wars SET state = ?, winner_id = NULL, finished_at = ?, score_attack = ?, score_defend = ? WHERE id = ?',
+            { 'finished', now(), state.scoreAttack or 0, state.scoreDefend or 0, state.id })
+    end
 
     if not winnerId then
         announce(state, 'It ended in a stalemate.', 'inform')
@@ -188,9 +221,13 @@ local function finish(state, winnerId, reason)
             Discord.Color.warn)
     end
 
-    -- Defender gets a breather either way.
-    MySQL.update('UPDATE xs_gangs SET raid_immune = ? WHERE id = ?',
-        { now() + Config.War.raid.immunityMinutes * 60000, state.defenderId })
+    -- Defender gets a breather either way. StartRaid reads this off the
+    -- cached gang row, which nothing rebuilds on its own, so writing only to
+    -- the database left the immunity unenforced until the next reload.
+    local immuneUntil = now() + Config.War.raid.immunityMinutes * 60000
+    MySQL.update('UPDATE xs_gangs SET raid_immune = ? WHERE id = ?', { immuneUntil, state.defenderId })
+    local defender = Gangs.Get(state.defenderId)
+    if defender then defender.raid_immune = immuneUntil end
 
     bothSides(state, function(gangId) Gangs.Broadcast(gangId, 'war', nil) end)
     if TestMode then TestMode.StopWar(state.id) end
@@ -232,9 +269,15 @@ function War.StartRaid(src, defenderGangId)
     if attacker.bank < Config.War.raid.cost then
         return false, ('staging a raid costs $%d'):format(Config.War.raid.cost)
     end
+
+    if not claimPair(attacker.id, defender.id) then return false, 'that is already being staged' end
+
     local affected = MySQL.update.await('UPDATE xs_gangs SET bank = bank - ? WHERE id = ? AND bank >= ?',
         { Config.War.raid.cost, attacker.id, Config.War.raid.cost })
-    if not affected or affected < 1 then return false, 'not enough in the treasury' end
+    if not affected or affected < 1 then
+        releasePair(attacker.id, defender.id)
+        return false, 'not enough in the treasury'
+    end
     attacker.bank = attacker.bank - Config.War.raid.cost
 
     local startsAt = now() + Config.War.raid.prepSeconds * 1000
@@ -258,6 +301,7 @@ function War.StartRaid(src, defenderGangId)
         -- which is what makes the whole loop testable solo.
         autoTest = TestMode and TestMode.IsArmed(defender.id) or false,
     }
+    releasePair(attacker.id, defender.id)
 
     Gangs.NotifyGang(defender.id, ('%s is mobilising on your HQ. You have %d seconds.'):format(
         attacker.label, Config.War.raid.prepSeconds), 'error')
@@ -285,12 +329,26 @@ function War.Declare(src, defenderGangId)
     if War.ActiveFor(attacker.id) then return false, 'you are already in something' end
     if War.ActiveFor(defender.id) then return false, 'they are already at war' end
 
+    -- Config.War.war.cooldownMinutes existed but nothing ever read it, so a
+    -- rich crew could re-declare the moment a war ended and keep one rival
+    -- permanently at war.
+    if (attacker.war_cooldown or 0) > now() then
+        return false, ('your crew can declare again in %d min'):format(
+            math.ceil((attacker.war_cooldown - now()) / 60000))
+    end
+
     if attacker.bank < Config.War.war.declareCost then
         return false, ('declaring war costs $%d'):format(Config.War.war.declareCost)
     end
+
+    if not claimPair(attacker.id, defender.id) then return false, 'that is already being declared' end
+
     local affected = MySQL.update.await('UPDATE xs_gangs SET bank = bank - ? WHERE id = ? AND bank >= ?',
         { Config.War.war.declareCost, attacker.id, Config.War.war.declareCost })
-    if not affected or affected < 1 then return false, 'not enough in the treasury' end
+    if not affected or affected < 1 then
+        releasePair(attacker.id, defender.id)
+        return false, 'not enough in the treasury'
+    end
     attacker.bank = attacker.bank - Config.War.war.declareCost
 
     local startsAt = now()
@@ -306,6 +364,11 @@ function War.Declare(src, defenderGangId)
         startsAt = startsAt, endsAt = endsAt,
         scoreAttack = 0, scoreDefend = 0,
     }
+    releasePair(attacker.id, defender.id)
+
+    local cooldownUntil = now() + (Config.War.war.cooldownMinutes or 0) * 60000
+    MySQL.update('UPDATE xs_gangs SET war_cooldown = ? WHERE id = ?', { cooldownUntil, attacker.id })
+    attacker.war_cooldown = cooldownUntil
 
     announce(active[warId], ('War: %s vs %s. %d minutes.'):format(
         attacker.label, defender.label, Config.War.war.durationMinutes), 'error')
@@ -505,9 +568,22 @@ function War.LootStash(src)
 
     local taken = {}
     if Config.War.stash.lootItems then
-        taken = Vault.LootStacks(window.loserId, Config.War.stash.maxItemStacks)
-        for _, item in ipairs(taken) do
-            exports.ox_inventory:AddItem(src, item.name, item.count, item.metadata)
+        local pulled = Vault.LootStacks(window.loserId, Config.War.stash.maxItemStacks)
+        -- LootStacks has already removed these from the loser's vault, so a
+        -- stack the looter has no room for would simply cease to exist. Put
+        -- anything that will not fit back where it came from, and only report
+        -- what actually landed.
+        for _, item in ipairs(pulled) do
+            local ok = exports.ox_inventory:AddItem(src, item.name, item.count, item.metadata)
+            if ok then
+                taken[#taken + 1] = item
+            else
+                Vault.ReturnStack(window.loserId, item)
+            end
+        end
+        if #taken < #pulled then
+            Framework.Notify(src, ('You could not carry %d stack(s) -- they were left behind.')
+                :format(#pulled - #taken), 'error')
         end
     end
 

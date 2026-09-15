@@ -104,8 +104,19 @@ function GangPerks.BuyPerk(src, perkId)
     end)
     if not ok then return false, 'already owned' end
 
-    gang.perk_points = gang.perk_points - def.cost
-    MySQL.update('UPDATE xs_gangs SET perk_points = perk_points - ? WHERE id = ?', { def.cost, gang.id })
+    -- Spend against the database, not the cached count. ModifiersFor and the
+    -- insert above both yield, so two members buying different perks at the
+    -- same moment each clear the affordability check and the old unguarded
+    -- decrement drove perk_points negative -- a free tier.
+    local paid = MySQL.update.await(
+        'UPDATE xs_gangs SET perk_points = perk_points - ? WHERE id = ? AND perk_points >= ?',
+        { def.cost, gang.id, def.cost })
+    if not paid or paid < 1 then
+        MySQL.query.await('DELETE FROM xs_gang_perks WHERE gang_id = ? AND perk_id = ?', { gang.id, perkId })
+        gang.perk_points = MySQL.scalar.await('SELECT perk_points FROM xs_gangs WHERE id = ?', { gang.id }) or 0
+        return false, 'not enough perk points'
+    end
+    gang.perk_points = math.max(0, (gang.perk_points or 0) - def.cost)
     Gangs.Log(gang.id, ('%s bought the "%s" perk'):format(Framework.GetName(src) or 'Someone', def.label), 'economy')
 
     Gangs.InvalidateModifiers(gang.id)

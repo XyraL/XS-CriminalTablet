@@ -111,6 +111,8 @@ end)
 -- victim self-reports their death + killer (client-side, like the kill
 -- task's "target down" report) — the server only acts on it if both
 -- players actually belong to the same gang and aren't the same person.
+local recentFriendlyFire = {}
+
 RegisterNetEvent('XS-CriminalTablet:server:reportGangKill', function(killerServerId)
     local victimSrc = source
     killerServerId = tonumber(killerServerId)
@@ -123,6 +125,14 @@ RegisterNetEvent('XS-CriminalTablet:server:reportGangKill', function(killerServe
     local victimGang = Gangs.GetByCitizen(victimCid)
     local killerGang = Gangs.GetByCitizen(killerCid)
     if not victimGang or not killerGang or victimGang.id ~= killerGang.id then return end
+
+    -- One death reaches here twice: the damage event in client/war.lua fires
+    -- it, and so does the death poll in client/main.lua. Without this the
+    -- killer is docked the penalty twice and the log reads double.
+    local pairKey = killerCid .. ':' .. victimCid
+    local at = os.time() * 1000
+    if (recentFriendlyFire[pairKey] or 0) + 15000 > at then return end
+    recentFriendlyFire[pairKey] = at
 
     Gangs.AddMemberRep(killerCid, -Config.Rep.friendlyFirePenalty, 'friendly_fire')
     Gangs.Log(killerGang.id, ('%s killed a fellow member (%s) — -%d rep'):format(

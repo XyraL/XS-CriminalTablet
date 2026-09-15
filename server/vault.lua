@@ -50,6 +50,13 @@ end
 
 -- Pull a handful of stacks out of a gang's stash. Used by the stash raid,
 -- which is the only thing that takes from a vault without opening it.
+-- LootStacks pulls a stack out before the winner is known to have room for
+-- it. If the handover fails the stack has to go back, or it is destroyed.
+function Vault.ReturnStack(gangId, item)
+    if not item or not item.name then return false end
+    return exports.ox_inventory:AddItem(Vault.StashId(gangId), item.name, item.count, item.metadata) and true or false
+end
+
 function Vault.LootStacks(gangId, maxStacks)
     local stash = Vault.StashId(gangId)
     local items = exports.ox_inventory:GetInventoryItems(stash)

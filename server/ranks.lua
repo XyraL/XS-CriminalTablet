@@ -29,6 +29,21 @@ local function canGrant(grantable, perm)
     return false
 end
 
+-- Nobody touches a rank above their own seat. `manage_ranks` on its own is not
+-- enough: without this an Associate holding it can strip the Underboss rank
+-- back to whatever they can grant, or delete it outright and demote everyone
+-- sitting on it. The owner is exempt. `own` allows acting on your own seat,
+-- which is fine for an edit -- canGrant already stops you handing yourself
+-- anything you do not hold -- but not for a delete.
+local function outranks(src, gang, grade, own)
+    local cid = Framework.GetCitizenId(src)
+    if gang.owner == cid then return true end
+    local member = gang.members[cid]
+    if not member then return false end
+    if own then return member.grade >= grade end
+    return member.grade > grade
+end
+
 local function persist(gangId, grade, name, perms)
     MySQL.query.await(
         'INSERT INTO xs_gang_ranks (gang_id, grade, name, permissions) VALUES (?, ?, ?, ?) ' ..
@@ -112,6 +127,7 @@ function Ranks.Update(src, grade, fields)
     grade = tonumber(grade)
     local rank = gang.ranks[grade]
     if not rank then return false, 'unknown rank' end
+    if not outranks(src, gang, grade, true) then return false, 'that rank sits at or above your own' end
 
     local isTop = grade == topGrade(gang)
     local name = rank.name
@@ -157,6 +173,7 @@ function Ranks.Delete(src, grade)
     if not gang.ranks[grade] then return false, 'unknown rank' end
     if grade == topGrade(gang) then return false, 'cannot delete the boss rank' end
     if grade == 0 then return false, 'cannot delete the entry rank' end
+    if not outranks(src, gang, grade) then return false, 'that rank sits at or above your own' end
 
     local below = 0
     for g in pairs(gang.ranks) do

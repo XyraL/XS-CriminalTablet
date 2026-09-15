@@ -4,6 +4,16 @@
 
 ### Fixed
 
+- **Adjusting a member's rep never worked.** Two callbacks were registered under the same name; the second won and expected a gang id where the panel sends a citizen id, so every attempt came back "unknown gang". The duplicate is gone — gang rep is edited on the gang card, which was always a separate path
+- **Raid immunity was never enforced.** The defender's breather after a raid was written to the database but not to the cached gang row the check actually reads, so a crew could be raided again immediately
+- **Double-clicking Raid or Declare staged it twice** — two wars for one pair, and the cost taken twice. Both charge and insert yield before the war registers, so the pair is now claimed up front
+- **A drawn war or a staff-cancelled one never closed properly.** The nil winner left a hole in the query parameters, which crosses into oxmysql as a map instead of a list, so nothing bound and the row stayed active
+- **Perk points could go negative.** Two members buying at the same moment both passed the affordability check; the spend is now guarded at the database and rolled back if it fails
+- **Looted vault stacks could be destroyed.** Items left the loser's vault before the winner was known to have room; anything that will not fit now goes back, and the notification counts what actually landed
+- **Killing a fellow member cost double rep.** Two client paths report the same death and nothing de-duplicated them
+- **`Config.War.war.cooldownMinutes` did nothing** — nothing read it, so a rich crew could re-declare the instant a war ended. It is enforced now
+- Ranks could be edited or deleted from below. `manage_ranks` no longer lets someone touch a rank above their own seat, or delete the one they sit on
+
 - **The live map was out by up to 300m.** The world rectangle the satellite render was believed to cover was the wrong shape — 9594 x 13208 against a 4096 x 6144 image, so X was stretched 9% against Y. Everything on the map read slightly wrong: near perfect in the middle, worst at the edges. It is now 9000 x 13500, which is exactly 2:3 like the render, refitted against the postal numbers drawn on the render itself. Same fix in XS-MDT, XS-AdminMenu and XS-Trucking, which share the map
 
 ### Added

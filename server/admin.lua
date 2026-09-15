@@ -386,12 +386,6 @@ function Admin.AdjustMemberRep(citizenid, amount)
     return Gangs.AddMemberRep(citizenid, math.floor(tonumber(amount) or 0), 'admin adjustment')
 end
 
-function Admin.AdjustRep(gangId, amount)
-    if not Gangs.Get(tonumber(gangId)) then return false, 'unknown gang' end
-    Rep.Add(tonumber(gangId), math.floor(tonumber(amount) or 0), 'admin adjustment')
-    return true
-end
-
 -- ── rank editing (staff bypass the "can't grant above your own" rule) ──
 function Admin.UpdateRank(gangId, grade, fields)
     gangId, grade = tonumber(gangId), tonumber(grade)
@@ -583,12 +577,6 @@ end))
 lib.callback.register('XS-CriminalTablet:admin:adjustRep', guarded(function(src, citizenid, amount)
     local ok, err = Admin.AdjustMemberRep(citizenid, amount)
     if ok then logAdmin(src, 'Member rep adjusted', ('%s — %+d'):format(citizenid, tonumber(amount) or 0), Discord.Color.info) end
-    return { ok = ok, error = err }
-end))
-
-lib.callback.register('XS-CriminalTablet:admin:adjustRep', guarded(function(src, gangId, amount)
-    local ok, err = Admin.AdjustRep(gangId, amount)
-    if ok then logAdmin(src, 'Rep adjusted', ('Gang #%s — %+d'):format(gangId, tonumber(amount) or 0), Discord.Color.info) end
     return { ok = ok, error = err }
 end))
 
