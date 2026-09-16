@@ -51,8 +51,31 @@ sample data is worse than starting clean.
        client = { export = 'XS-CriminalTablet.useDevice' },
    },
    ```
+   `/selldrug` buys three bricks off players. Add these too, or point
+   `Config.DrugSelling.items` at names you already have:
+
+   ```lua
+   ['weed_brick'] = { label = 'Weed Brick',    weight = 1000, stack = true },
+   ['coke_brick'] = { label = 'Cocaine Brick', weight = 1000, stack = true },
+   ['meth_brick'] = { label = 'Meth Brick',    weight = 1000, stack = true },
+   ```
+
    The graffiti, medic and radial systems also want `spraycan`, `bandage` and
    `handcuffs` — rename them in config if yours are called something else.
+
+   **Images.** The four items above ship in `inventory_images/`. Copy them into
+   your inventory's image folder:
+
+   - ox_inventory → `ox_inventory/web/images/`
+   - qb-inventory → `qb-inventory/html/images/`
+   - ps-inventory → `ps-inventory/html/images/`
+   - qs-inventory → `qs-inventory/html/images/`
+   - codem-inventory → `codem-inventory/html/itemimages/`
+   - core_inventory → `core_inventory/html/img/`
+
+   If yours is not listed, put them wherever its existing item PNGs already
+   live. Restart the inventory resource afterwards. `spraycan`, `bandage` and
+   `handcuffs` are your server's own items and keep the images they have.
 4. `ensure XS-CriminalTablet` in `server.cfg`, after ox_lib, oxmysql, your
    framework and ox_inventory.
 5. Grant yourself staff access:
