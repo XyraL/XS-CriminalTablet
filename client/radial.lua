@@ -463,13 +463,20 @@ lib.callback.register('XS-CriminalTablet:field:handsUp', function()
     return false
 end)
 
--- Re-sync after a respawn or a resource restart, so a cuffed player
+-- Re-sync after a resource restart or a fresh login, so a cuffed player
 -- doesn't quietly come back free.
+local function resync()
+    local state = lib.callback.await('XS-CriminalTablet:field:getRestraint', false)
+    if not state then return end
+    if state.cuffed then TriggerEvent('XS-CriminalTablet:client:setRestraint', 'cuffed', true) end
+    if state.bagged then TriggerEvent('XS-CriminalTablet:client:setRestraint', 'bagged', true) end
+end
+
 CreateThread(function()
     Wait(5000)
-    local state = lib.callback.await('XS-CriminalTablet:field:getRestraint', false)
-    if state and state.cuffed then
-        restraint.cuffed = true
-        applyCuffed(true)
-    end
+    resync()
+end)
+
+RegisterNetEvent('QBCore:Client:OnPlayerLoaded', function()
+    SetTimeout(2500, resync)
 end)

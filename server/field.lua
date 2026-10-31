@@ -202,8 +202,9 @@ function Field.SlashTyre(src, netId, tyreIndex)
 end
 
 -- ── cleanup ─────────────────────────────────────────────────
--- A restrained player whose captor disconnects has to be let go, or they
--- are stuck in an animation nobody can clear.
+-- A captor who leaves puts down whoever they were carrying, or the victim is
+-- stuck in an animation nobody can clear. Cuffs and a bag stay on, and stay
+-- on someone who logs out or crashes while wearing them.
 local function release(src)
     for cid, state in pairs(restrained) do
         if state.carriedBy == src or state.hostageOf == src then
@@ -213,7 +214,10 @@ local function release(src)
         end
     end
     local cid = Framework.GetCitizenId(src)
-    if cid then restrained[cid] = nil end
+    local own = cid and restrained[cid]
+    if not own then return end
+    own.carriedBy, own.hostageOf = nil, nil
+    if not own.cuffed and not own.bagged then restrained[cid] = nil end
 end
 
 AddEventHandler('playerDropped', function()
@@ -255,6 +259,8 @@ end)
 
 lib.callback.register('XS-CriminalTablet:field:getRestraint', function(src)
     local cid = Framework.GetCitizenId(src)
-    if not cid then return {} end
-    return stateOf(cid)
+    local state = cid and restrained[cid]
+    if not state then return {} end
+    state.carriedBy, state.hostageOf = nil, nil
+    return state
 end)

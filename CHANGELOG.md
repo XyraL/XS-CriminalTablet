@@ -1,11 +1,20 @@
 # Changelog
 
+## [2.0.3] - 2026-10-30
+
+### Fixed
+
+- Fixed logging out or crashing taking your cuffs and bag off. They go back on when that character logs in again
+- If whoever is carrying you logs out or crashes, you are put down but stay cuffed
+
+Replace everything except your config.lua. No SQL to run.
+
 ## [2.0.2] - 2026-10-30
 
 ### Fixed
 
-- Switching character closes the tablet, bench and radial menu, frees anyone cuffed or carried, and ends your job and invites
-- The tablet and war status load for the new character after a switch
+- Logging out closes the tablet, bench and radial menu, and ends your job and invites
+- The tablet and war status load properly when you log back in
 - A model that will not load no longer freezes a job, a placement or the garage. You get a message instead
 - A gang car that fails to spawn goes back into the garage
 
