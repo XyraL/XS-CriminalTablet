@@ -103,6 +103,19 @@ RegisterNetEvent('XS-CriminalTablet:client:refresh', function()
     end)
 end)
 
+RegisterNetEvent('QBCore:Client:OnPlayerUnload', function()
+    pendingInvite = nil
+    closeDevice()
+    noteGang(nil)
+end)
+
+RegisterNetEvent('QBCore:Client:OnPlayerLoaded', function()
+    CreateThread(function()
+        local snapshot = lib.callback.await('XS-CriminalTablet:getSnapshot', false)
+        noteGang(snapshot)
+    end)
+end)
+
 RegisterNetEvent('XS-CriminalTablet:client:openDevice', function() openDevice() end)
 RegisterNetEvent('XS-CriminalTablet:client:openDeviceFromWorld', function() openDevice() end)
 RegisterNetEvent('XS-CriminalTablet:client:openDeviceAt', function(app) openDevice(app) end)

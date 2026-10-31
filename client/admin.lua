@@ -27,6 +27,10 @@ RegisterNUICallback('admin:close', function(_, cb)
     cb({})
 end)
 
+RegisterNetEvent('QBCore:Client:OnPlayerUnload', function()
+    closeAdmin()
+end)
+
 local adminAllowed = {
     -- dashboard + gangs
     ['XS-CriminalTablet:admin:getDashboard']    = true,

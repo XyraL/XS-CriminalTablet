@@ -65,3 +65,7 @@ RegisterNUICallback('craft:escape', function(_, cb)
     closeCraftBench()
     cb({})
 end)
+
+RegisterNetEvent('QBCore:Client:OnPlayerUnload', function()
+    closeCraftBench()
+end)

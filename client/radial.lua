@@ -262,8 +262,7 @@ local function slashTyre()
     -- Knife in hand so the animation reads as cutting something rather
     -- than crouching next to a car for no reason.
     local knife = nil
-    if cfg.prop and cfg.prop ~= '' and IsModelValid(cfg.prop) then
-        lib.requestModel(cfg.prop)
+    if cfg.prop and cfg.prop ~= '' and IsModelValid(cfg.prop) and XSModel.Load(cfg.prop) then
         local ped = PlayerPedId()
         local c = GetEntityCoords(ped)
         knife = CreateObject(cfg.prop, c.x, c.y, c.z, true, true, false)
@@ -428,6 +427,18 @@ RegisterNetEvent('XS-CriminalTablet:client:setTrunk', function(netId)
     RequestAnimDict('nm')
     TaskPlayAnim(ped, 'nm', 'firemans_carry', 8.0, -8.0, -1, 49, 0, false, false, false)
     SetVehicleDoorShut(vehicle, 5, false)
+end)
+
+RegisterNetEvent('QBCore:Client:OnPlayerUnload', function()
+    closeRadial()
+    if restraint.cuffed then applyCuffed(false) end
+    if restraint.bagged then DoScreenFadeIn(300) end
+    restraint.cuffed, restraint.bagged = false, false
+    if carriedBy then
+        carriedBy, carryMode = nil, nil
+        DetachEntity(PlayerPedId(), true, false)
+        ClearPedTasks(PlayerPedId())
+    end
 end)
 
 RegisterNetEvent('XS-CriminalTablet:client:popTyre', function(netId, tyreIndex)

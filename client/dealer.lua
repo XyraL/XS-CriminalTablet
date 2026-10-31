@@ -21,7 +21,10 @@ local function spawnDealer(coords, model)
         print(('^1[XS-CriminalTablet]^0 dealer model invalid (%s) - fix Config.Dealer.pedModel'):format(model))
         return
     end
-    lib.requestModel(model)
+    if not XSModel.Load(model) then
+        print(('^1[XS-CriminalTablet]^0 dealer model did not load (%s)'):format(model))
+        return
+    end
     dealerPed = CreatePed(4, model, coords.x, coords.y, coords.z, coords.w or 0.0, false, false)
     SetEntityInvincible(dealerPed, true)
     SetBlockingOfNonTemporaryEvents(dealerPed, true)

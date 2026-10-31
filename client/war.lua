@@ -224,9 +224,8 @@ RegisterNetEvent('XS-CriminalTablet:client:testModeSpawn', function(data)
 
     local origin = vec3(data.coords.x, data.coords.y, data.coords.z)
     if #(GetEntityCoords(PlayerPedId()) - origin) > 300.0 then return end
-    if not IsModelValid(data.model) then return end
+    if not IsModelValid(data.model) or not XSModel.Load(data.model) then return end
 
-    lib.requestModel(data.model)
     local peds = {}
     for i = 1, data.count do
         local angle = (i / data.count) * math.pi * 2
@@ -271,4 +270,17 @@ AddEventHandler('onResourceStop', function(resource)
     if resource ~= GetCurrentResourceName() then return end
     for key in pairs(testDefenders) do despawnTest(key) end
     if stashBlip then RemoveBlip(stashBlip) end
+end)
+
+RegisterNetEvent('QBCore:Client:OnPlayerUnload', function()
+    warState, stashWindow = nil, nil
+    if stashBlip then RemoveBlip(stashBlip) stashBlip = nil end
+end)
+
+RegisterNetEvent('QBCore:Client:OnPlayerLoaded', function()
+    local res = lib.callback.await('XS-CriminalTablet:war:getState', false)
+    if res then
+        warState = res.war
+        if res.stash then TriggerEvent('XS-CriminalTablet:client:sync', 'stash', res.stash) end
+    end
 end)

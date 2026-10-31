@@ -294,6 +294,14 @@ function Gangs.AcceptInvite(src)
     return true
 end
 
+AddEventHandler('playerDropped', function()
+    pendingInvites[source] = nil
+end)
+
+AddEventHandler('QBCore:Server:OnPlayerUnload', function(src)
+    pendingInvites[tonumber(src) or source] = nil
+end)
+
 function Gangs.Kick(src, targetCid)
     if not Gangs.HasPerm(src, 'kick') then return false, 'no permission' end
     local gang = Gangs.GetBySource(src)

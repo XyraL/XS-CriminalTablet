@@ -807,16 +807,35 @@ CreateThread(function()
     end
 end)
 
-AddEventHandler('playerDropped', function()
-    local src = source
+local function leave(src)
+    local job = active[src]
+    if job and (not job.coop or job.leaderSrc == src) then
+        Tasks.Cancel(src)
+    elseif job then
+        for i, m in ipairs(job.crew) do
+            if m == src then table.remove(job.crew, i); break end
+        end
+        job.cids[src] = nil
+    end
     active[src] = nil
     crews[src] = nil
     pendingCoopInvites[src] = nil
+    for targetSrc, invite in pairs(pendingCoopInvites) do
+        if invite.fromSrc == src then pendingCoopInvites[targetSrc] = nil end
+    end
     for _, c in pairs(crews) do
         for i, m in ipairs(c.members) do
             if m == src then table.remove(c.members, i); c.names[src] = nil; break end
         end
     end
+end
+
+AddEventHandler('playerDropped', function()
+    leave(source)
+end)
+
+AddEventHandler('QBCore:Server:OnPlayerUnload', function(src)
+    leave(tonumber(src) or source)
 end)
 
 RegisterNetEvent('XS-CriminalTablet:server:acceptTaskCoopInvite', function()

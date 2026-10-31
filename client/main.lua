@@ -21,6 +21,12 @@ function XSTarget.Ready()
     return GetResourceState('ox_target') == 'started'
 end
 
+XSModel = XSModel or {}
+function XSModel.Load(model, timeout)
+    if not IsModelInCdimage(model) then return false end
+    return pcall(lib.requestModel, model, timeout) and HasModelLoaded(model)
+end
+
 -- Returns the first { dict, clip } whose dictionary exists, or nil.
 function XSAnim.Pick(candidates)
     for _, c in ipairs(candidates or {}) do
@@ -257,8 +263,7 @@ end)
 
 local function attachCarryProp(model)
     clearCarryProp()
-    if not model or not IsModelValid(model) then return end
-    lib.requestModel(model)
+    if not model or not IsModelValid(model) or not XSModel.Load(model) then return end
     local ped = PlayerPedId()
     carryProp = CreateObject(model, 0.0, 0.0, 0.0, true, true, false)
     AttachEntityToEntity(carryProp, ped, GetPedBoneIndex(ped, 28422), 0.1, 0.02, 0.0, 0.0, 0.0, 0.0, true, true, false, true, 1, true)
@@ -277,7 +282,10 @@ local function spawnKillTarget(spawn, model, weapon, isLeader)
         lib.notify({ description = ('Bad ped model for this task (%s) — tell an admin to fix config.lua'):format(model), type = 'error' })
         return
     end
-    lib.requestModel(model)
+    if not XSModel.Load(model) then
+        lib.notify({ description = ('Could not load the target (%s) — cancel the job and try again.'):format(model), type = 'error' })
+        return
+    end
     killPed = CreatePed(4, model, spawn.x, spawn.y, spawn.z, 0.0, true, true)
     snapToGround(killPed)
 
@@ -362,7 +370,10 @@ local function spawnEscort(spawn, destination, model, radius, isLeader)
         lib.notify({ description = ('Bad escort ped model (%s) — tell an admin to fix config.lua'):format(model), type = 'error' })
         return
     end
-    lib.requestModel(model)
+    if not XSModel.Load(model) then
+        lib.notify({ description = ('Could not load the escort (%s) — cancel the job and try again.'):format(model), type = 'error' })
+        return
+    end
     escortPed = CreatePed(4, model, spawn.x, spawn.y, spawn.z, 0.0, true, true)
     snapToGround(escortPed)
     SetBlockingOfNonTemporaryEvents(escortPed, true)
@@ -506,7 +517,11 @@ local function spawnCourierVan(vanSpawn, model, isLeader)
         return
     end
 
-    lib.requestModel(hash)
+    if not XSModel.Load(hash) then
+        lib.notify({ description = 'Failed to spawn the delivery van — check the F8 console.', type = 'error' })
+        print(('^1[XS-CriminalTablet]^0 spawnCourierVan: model "%s" did not load in time'):format(tostring(model)))
+        return
+    end
     courierVan = CreateVehicle(hash, vanSpawn.x, vanSpawn.y, vanSpawn.z, vanSpawn.w or 0.0, true, true)
     if not courierVan or courierVan == 0 then
         lib.notify({ description = 'Failed to spawn the delivery van — check the F8 console.', type = 'error' })
@@ -536,7 +551,10 @@ local function spawnQuartermaster(coords, model, isLeader, onTalk)
         lib.notify({ description = ('Bad quartermaster model (%s) — tell an admin to fix config.lua'):format(model), type = 'error' })
         return
     end
-    lib.requestModel(model)
+    if not XSModel.Load(model) then
+        lib.notify({ description = ('Could not load the quartermaster (%s) — cancel the job and try again.'):format(model), type = 'error' })
+        return
+    end
     -- There is no GetOffsetFrom*Coord*InWorldCoords — only the entity one.
     -- Stand the quartermaster a step to the side of the marker by hand.
     local h = math.rad(coords.w or 0.0)
@@ -592,7 +610,7 @@ local function maybeTriggerCourierAmbush(chance, dropoff)
                 for i = 1, 2 do
                     local offset = GetOffsetFromEntityInWorldCoords(courierVan, math.random(-6, 6) + 0.0, math.random(-6, 6) + 0.0, 0.0)
                     local model = `g_m_y_lost_01`
-                    lib.requestModel(model)
+                    if not XSModel.Load(model) then return end
                     local hPed = CreatePed(4, model, offset.x, offset.y, offset.z, 0.0, true, true)
                     snapToGround(hPed)
                     SetPedRelationshipGroupHash(hPed, hostileGroup)
@@ -620,7 +638,10 @@ local function spawnDropoffPedOnly(coords, model, isLeader)
         lib.notify({ description = ('Bad dropoff ped model (%s) — tell an admin to fix config.lua'):format(model), type = 'error' })
         return
     end
-    lib.requestModel(model)
+    if not XSModel.Load(model) then
+        lib.notify({ description = ('Could not load the dropoff ped (%s) — cancel the job and try again.'):format(model), type = 'error' })
+        return
+    end
     dropoffPed = CreatePed(4, model, coords.x, coords.y, coords.z, coords.w or 0.0, true, true)
     -- Without this, OneSync can clean the ped up as "too far from any
     -- player" before whoever's driving the van actually gets there.
@@ -821,6 +842,12 @@ RegisterNetEvent('XS-CriminalTablet:client:taskCleanupVan', function(netId)
     clearCourierAmbush()
 end)
 
+RegisterNetEvent('QBCore:Client:OnPlayerUnload', function()
+    pcall(function() lib.cancelProgress() end)
+    clearTaskBlip()
+    clearAllTaskVisuals()
+end)
+
 -- ── model test helper ──
 -- Lets an admin try candidate prop/ped names live and see if they're
 -- actually valid on this build, instead of guessing from config.lua and
@@ -837,8 +864,11 @@ RegisterCommand('testmodel', function(_, args)
         lib.notify({ description = ('Invalid model: %s'):format(name), type = 'error' })
         return
     end
+    if not XSModel.Load(hash) then
+        lib.notify({ description = ('Could not load %s.'):format(name), type = 'error' })
+        return
+    end
     lib.notify({ description = ('Valid! Spawning %s for 6s in front of you.'):format(name), type = 'success' })
-    lib.requestModel(hash)
     local ped = PlayerPedId()
     local fwd = GetEntityForwardVector(ped)
     local pos = GetEntityCoords(ped) + fwd * 2.0

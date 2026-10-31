@@ -51,8 +51,7 @@ end
 local function buildWalls(t)
     local cfg = Config.Territory.walls
     if not cfg.enabled or not t.points or #t.points < 3 then return end
-    if not IsModelValid(cfg.model) then return end
-    lib.requestModel(cfg.model)
+    if not IsModelValid(cfg.model) or not XSModel.Load(cfg.model) then return end
 
     local placed = 0
     for i = 1, #t.points do

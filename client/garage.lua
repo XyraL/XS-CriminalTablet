@@ -52,10 +52,15 @@ function GangGarage.Take(vehicleId)
     local model = joaat(v.model)
     if not IsModelInCdimage(model) then
         lib.notify({ description = ('That model (%s) is not on this server.'):format(v.model), type = 'error' })
+        TriggerServerEvent('XS-CriminalTablet:server:garageReturned', v.plate, v.props)
         return false
     end
 
-    lib.requestModel(model)
+    if not XSModel.Load(model) then
+        lib.notify({ description = ('%s would not load — try again.'):format(v.label), type = 'error' })
+        TriggerServerEvent('XS-CriminalTablet:server:garageReturned', v.plate, v.props)
+        return false
+    end
     local base = vec3(v.spawn.x, v.spawn.y, v.spawn.z)
     local spot = findSpawnSpot(base)
 

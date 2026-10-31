@@ -459,8 +459,7 @@ end
 local function sprayProp()
     local model = Config.Graffiti.anim and Config.Graffiti.anim.prop
     if not model or model == '' then return nil end
-    if not IsModelValid(model) then return nil end
-    lib.requestModel(model)
+    if not IsModelValid(model) or not XSModel.Load(model) then return nil end
 
     local ped = PlayerPedId()
     local coords = GetEntityCoords(ped)
@@ -738,4 +737,8 @@ end, false)
 AddEventHandler('onResourceStop', function(resource)
     if resource ~= GetCurrentResourceName() then return end
     for id in pairs(live) do destroySurface(id) end
+end)
+
+RegisterNetEvent('QBCore:Client:OnPlayerUnload', function()
+    if spraying then stopSpraying() end
 end)

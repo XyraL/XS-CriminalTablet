@@ -11,6 +11,7 @@ Placeables = {}
 local spawned = {}       -- [gang:kind:unlockId] = entity handle
 local interactive = {}   -- same key space, rows that need a proximity prompt
 local myGangId = nil
+local placing = false
 
 local function hasTarget() return XSTarget.Ready() end
 
@@ -76,7 +77,10 @@ local function spawnOne(p)
             p.label, p.model))
         return
     end
-    lib.requestModel(p.model)
+    if not XSModel.Load(p.model) then
+        print(('^1[XS-CriminalTablet]^0 placement "%s" model did not load (%s)'):format(p.label, p.model))
+        return
+    end
 
     local handle = CreateObject(p.model, p.x, p.y, p.z, false, false, false)
     SetEntityHeading(handle, p.heading)
@@ -190,7 +194,10 @@ function Placeables.StartPlacement(unlockId)
         return
     end
 
-    lib.requestModel(def.model)
+    if not XSModel.Load(def.model) then
+        lib.notify({ description = ('Could not load %s — try again.'):format(def.label), type = 'error' })
+        return
+    end
     local ped = PlayerPedId()
     local dist, rot, zOff = 2.0, 0.0, 0.0
     local ghost = CreateObject(def.model, 0.0, 0.0, 0.0, false, false, false)
@@ -201,7 +208,7 @@ function Placeables.StartPlacement(unlockId)
         '[Scroll] Distance   [Q/E] Rotate   [Arrow Up/Down] Height   ' ..
         '[Shift] Faster   [G] Re-seat   [Enter] Place   [Backspace] Cancel')
 
-    local placing = true
+    placing = true
     while placing do
         Wait(0)
         DisableControlAction(0, 14, true)  -- scroll up
@@ -254,4 +261,12 @@ function Placeables.StartPlacement(unlockId)
             lib.hideTextUI()
         end
     end
+    if DoesEntityExist(ghost) then
+        DeleteEntity(ghost)
+        lib.hideTextUI()
+    end
 end
+
+RegisterNetEvent('QBCore:Client:OnPlayerUnload', function()
+    placing = false
+end)

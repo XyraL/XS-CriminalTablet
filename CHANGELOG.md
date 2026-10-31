@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.0.2] - 2026-10-30
+
+### Fixed
+
+- Switching character closes the tablet, bench and radial menu, frees anyone cuffed or carried, and ends your job and invites
+- The tablet and war status load for the new character after a switch
+- A model that will not load no longer freezes a job, a placement or the garage. You get a message instead
+- A gang car that fails to spawn goes back into the garage
+
+Replace everything except your config.lua. No SQL to run.
+
 ## [2.0.1] - 2026-09-14
 
 ### Fixed

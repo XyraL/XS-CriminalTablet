@@ -30,11 +30,14 @@ local function spawnStation()
 
     if st.model and st.model ~= '' then
         if IsModelValid(st.model) then
-            lib.requestModel(st.model)
-            stationObj = CreateObject(st.model, c.x, c.y, c.z, false, false, false)
-            SetEntityHeading(stationObj, st.heading or 0.0)
-            FreezeEntityPosition(stationObj, true)
-            SetEntityAsMissionEntity(stationObj, true, true)
+            if XSModel.Load(st.model) then
+                stationObj = CreateObject(st.model, c.x, c.y, c.z, false, false, false)
+                SetEntityHeading(stationObj, st.heading or 0.0)
+                FreezeEntityPosition(stationObj, true)
+                SetEntityAsMissionEntity(stationObj, true, true)
+            else
+                print(('^1[XS-CriminalTablet]^0 Config.Medic.station.model "%s" did not load'):format(tostring(st.model)))
+            end
         else
             print(('^1[XS-CriminalTablet]^0 Config.Medic.station.model "%s" is not a valid model'):format(tostring(st.model)))
         end

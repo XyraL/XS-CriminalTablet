@@ -204,8 +204,7 @@ end
 -- ── cleanup ─────────────────────────────────────────────────
 -- A restrained player whose captor disconnects has to be let go, or they
 -- are stuck in an animation nobody can clear.
-AddEventHandler('playerDropped', function()
-    local src = source
+local function release(src)
     for cid, state in pairs(restrained) do
         if state.carriedBy == src or state.hostageOf == src then
             state.carriedBy, state.hostageOf = nil, nil
@@ -215,6 +214,14 @@ AddEventHandler('playerDropped', function()
     end
     local cid = Framework.GetCitizenId(src)
     if cid then restrained[cid] = nil end
+end
+
+AddEventHandler('playerDropped', function()
+    release(source)
+end)
+
+AddEventHandler('QBCore:Server:OnPlayerUnload', function(src)
+    release(tonumber(src) or source)
 end)
 
 -- ── callbacks ───────────────────────────────────────────────
