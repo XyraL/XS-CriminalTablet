@@ -33,7 +33,7 @@ end
 -- ── reads ───────────────────────────────────────────────────
 function Admin.ListGangs()
     local rows = MySQL.query.await(
-        'SELECT id, name, label, color, owner, notoriety, bank, max_members, war_wins, war_losses, perk_points ' ..
+        'SELECT id, name, label, color, owner, notoriety, bank, max_members, war_wins, war_losses, perk_points, framework_gang, logo ' ..
         'FROM xs_gangs ORDER BY label') or {}
     for _, row in ipairs(rows) do
         row.tier = Rep.Tier(row.notoriety)
@@ -103,8 +103,8 @@ function Admin.CreateGang(opts)
 
     local boss = tostring(opts.boss or ''):gsub('%s', '')
     if boss ~= '' then
-        local exists = MySQL.single.await('SELECT citizenid FROM players WHERE citizenid = ?', { boss })
-        if not exists then return false, 'no character with that citizenid' end
+        boss = Framework.ResolveCitizenId(boss)
+        if not boss then return false, 'no character with that citizenid' end
         local already = MySQL.single.await('SELECT gang_id FROM xs_gang_members WHERE citizenid = ?', { boss })
         if already then return false, 'that character is already in a gang' end
     end
@@ -167,6 +167,25 @@ function Admin.UpdateGang(gangId, fields)
     local gang = Gangs.Get(gangId)
     if not gang then return false, 'unknown gang' end
 
+    local linkTo
+    if fields.frameworkGang ~= nil then
+        linkTo = tostring(fields.frameworkGang):lower():gsub('[^%w_%-]', ''):sub(1, 64)
+        if linkTo ~= '' and MySQL.single.await('SELECT id FROM xs_gangs WHERE framework_gang = ? AND id <> ?', { linkTo, gangId }) then
+            return false, 'another crew is already linked to that framework gang'
+        end
+    end
+
+    local newBoss
+    if fields.boss then
+        newBoss = Framework.ResolveCitizenId(fields.boss)
+        if not newBoss then return false, 'no character with that citizenid' end
+        if not MySQL.single.await(
+            'SELECT citizenid FROM xs_gang_members WHERE citizenid = ? AND gang_id = ?', { newBoss, gangId })
+            and MySQL.single.await('SELECT gang_id FROM xs_gang_members WHERE citizenid = ?', { newBoss }) then
+            return false, 'that character is in another gang'
+        end
+    end
+
     if fields.label then
         local label = tostring(fields.label):sub(1, 64)
         MySQL.update('UPDATE xs_gangs SET label = ? WHERE id = ?', { label, gangId })
@@ -206,19 +225,16 @@ function Admin.UpdateGang(gangId, fields)
         gang.notoriety = rep
     end
 
-    if fields.boss then
-        local newBoss = tostring(fields.boss):gsub('%s', '')
+    if newBoss then
         local top = Gangs._topGrade(gang.ranks)
         local existing = MySQL.single.await(
             'SELECT citizenid FROM xs_gang_members WHERE citizenid = ? AND gang_id = ?', { newBoss, gangId })
         local bossName = Framework.GetNameByCitizenId(newBoss) or newBoss
 
         if existing then
-            MySQL.update('UPDATE xs_gang_members SET grade = ?, name = ? WHERE citizenid = ?',
-                { top, bossName, newBoss })
+            MySQL.update('UPDATE xs_gang_members SET citizenid = ?, grade = ?, name = ? WHERE citizenid = ?',
+                { newBoss, top, bossName, newBoss })
         else
-            local elsewhere = MySQL.single.await('SELECT gang_id FROM xs_gang_members WHERE citizenid = ?', { newBoss })
-            if elsewhere then return false, 'that character is in another gang' end
             MySQL.insert.await(
                 'INSERT INTO xs_gang_members (gang_id, citizenid, name, grade) VALUES (?, ?, ?, ?)',
                 { gangId, newBoss, bossName, top })
@@ -228,11 +244,17 @@ function Admin.UpdateGang(gangId, fields)
         gang.owner = newBoss
     end
 
+    local linkChanged = linkTo ~= nil and linkTo ~= (gang.framework_gang or '')
+    if linkChanged then
+        MySQL.update.await('UPDATE xs_gangs SET framework_gang = ? WHERE id = ?', { linkTo ~= '' and linkTo or nil, gangId })
+    end
+
     Gangs._reload(gangId)
     Gangs.Broadcast(gangId, 'gang', {})
     for _, src in ipairs(Gangs.OnlineSources(gangId)) do
         TriggerClientEvent('XS-CriminalTablet:client:refresh', src)
     end
+    if linkChanged then CreateThread(FrameworkLink.SyncAll) end
     return true
 end
 
@@ -309,17 +331,16 @@ function Admin.AddMember(gangId, citizenid, grade)
     local gang = Gangs.Get(gangId)
     if not gang then return false, 'unknown gang' end
 
-    citizenid = tostring(citizenid or ''):gsub('%s', '')
-    if citizenid == '' then return false, 'no citizenid' end
+    local typed = tostring(citizenid or ''):gsub('%s', '')
+    if typed == '' then return false, 'no citizenid' end
+    citizenid = Framework.ResolveCitizenId(typed)
+    if not citizenid then return false, 'no character with that citizenid' end
     if MySQL.single.await('SELECT gang_id FROM xs_gang_members WHERE citizenid = ?', { citizenid }) then
         return false, 'already in a gang'
     end
-    if not MySQL.single.await('SELECT citizenid FROM players WHERE citizenid = ?', { citizenid }) then
-        return false, 'no character with that citizenid'
-    end
 
-    grade = tonumber(grade) or 0
-    if not gang.ranks[grade] then grade = 0 end
+    grade = tonumber(grade)
+    if not grade or not gang.ranks[grade] then grade = Gangs.JoinGrade(gang) end
 
     local name = Framework.GetNameByCitizenId(citizenid) or citizenid
     MySQL.insert.await('INSERT INTO xs_gang_members (gang_id, citizenid, name, grade) VALUES (?, ?, ?, ?)',
@@ -327,8 +348,8 @@ function Admin.AddMember(gangId, citizenid, grade)
     Gangs._reload(gangId)
 
     local src = Gangs.SourceOf(citizenid)
+    Gangs._syncFramework(src, Gangs.Get(gangId), grade, nil, citizenid)
     if src then
-        Gangs._syncFramework(src, Gangs.Get(gangId), grade)
         Framework.Notify(src, ('Staff added you to %s.'):format(gang.label), 'inform')
         TriggerClientEvent('XS-CriminalTablet:client:refresh', src)
     end
@@ -349,8 +370,8 @@ function Admin.KickMember(gangId, citizenid)
     gang.members[citizenid] = nil
 
     local src = Gangs.SourceOf(citizenid)
+    Gangs._syncFramework(src, nil, nil, gang, citizenid)
     if src then
-        Gangs._syncFramework(src, nil)
         Framework.Notify(src, 'Staff removed you from your gang.', 'error')
         TriggerClientEvent('XS-CriminalTablet:client:refresh', src)
     end
@@ -372,8 +393,8 @@ function Admin.SetMemberGrade(gangId, citizenid, grade)
     gang.members[citizenid].grade = grade
 
     local src = Gangs.SourceOf(citizenid)
+    Gangs._syncFramework(src, gang, grade, nil, citizenid)
     if src then
-        Gangs._syncFramework(src, gang, grade)
         TriggerClientEvent('XS-CriminalTablet:client:refresh', src)
     end
 
@@ -495,7 +516,7 @@ lib.callback.register('XS-CriminalTablet:admin:checkAccess', function(src)
 end)
 
 lib.callback.register('XS-CriminalTablet:admin:getOverview', guarded(function(src)
-    return { gangs = Admin.ListGangs(), territories = Territory.GetAll() }
+    return { gangs = Admin.ListGangs(), territories = Territory.GetAll(), frameworkGangs = Framework.GetGangs() }
 end))
 
 lib.callback.register('XS-CriminalTablet:admin:getMembers', guarded(function(src, gangId)
@@ -612,6 +633,50 @@ lib.callback.register('XS-CriminalTablet:admin:updateZone', guarded(function(src
 end))
 
 -- ── Map editor: everything the satellite view needs in one round trip ──
+-- Every staff box that takes a person: online players by name or server
+-- ID first, then offline characters by name or citizenid.
+lib.callback.register('XS-CriminalTablet:admin:findPlayers', guarded(function(src, query)
+    query = tostring(query or ''):gsub('[%c]', ''):sub(1, 40):match('^%s*(.-)%s*$')
+    local q = query:lower()
+    local out, seen = {}, {}
+    for _, p in ipairs(GetPlayers()) do
+        local id = tonumber(p)
+        local cid = Framework.GetCitizenId(id)
+        if cid then
+            local name = Framework.GetName(id) or GetPlayerName(id) or cid
+            if q == '' or tostring(id) == q or name:lower():find(q, 1, true) or cid:lower():find(q, 1, true) then
+                out[#out + 1] = { citizenid = cid, name = name, online = true, src = id }
+                seen[cid] = true
+            end
+        end
+    end
+    local first = q:match('^(%S+)')
+    if first and #first >= 2 then
+        local like = '%' .. first:gsub('[%%_\\]', '\\%0') .. '%'
+        local rows = MySQL.query.await('SELECT citizenid, charinfo FROM players WHERE citizenid LIKE ? OR charinfo LIKE ? LIMIT 40', { like, like }) or {}
+        for _, r in ipairs(rows) do
+            if not seen[r.citizenid] and #out < 20 then
+                local ok, ci = pcall(function() return type(r.charinfo) == 'string' and json.decode(r.charinfo) or r.charinfo end)
+                ci = ok and type(ci) == 'table' and ci or {}
+                local name = ci.firstname and ((ci.firstname or '') .. ' ' .. (ci.lastname or '')) or r.citizenid
+                local hay = (name .. ' ' .. r.citizenid):lower()
+                local all = true
+                for word in q:gmatch('%S+') do if not hay:find(word, 1, true) then all = false break end end
+                if all then
+                    out[#out + 1] = { citizenid = r.citizenid, name = name, online = false }
+                    seen[r.citizenid] = true
+                end
+            end
+        end
+    end
+    for i = #out, 21, -1 do out[i] = nil end
+    for _, p in ipairs(out) do
+        local g = Gangs.GetByCitizen(p.citizenid)
+        p.gang = g and g.label or nil
+    end
+    return out
+end))
+
 lib.callback.register('XS-CriminalTablet:admin:resolveCitizenId', guarded(function(src, targetId)
     targetId = tonumber(targetId)
     if not targetId then return nil end
@@ -622,7 +687,9 @@ end))
 
 -- ── Dealer: stock, spawns and the scalars, all live ──
 lib.callback.register('XS-CriminalTablet:admin:dealerState', guarded(function(src)
-    return Dealer.AdminState()
+    local state = Dealer.AdminState()
+    state.items = Settings.Items()
+    return state
 end))
 
 lib.callback.register('XS-CriminalTablet:admin:dealerAddItem', guarded(function(src, item, label, priceMin, priceMax)
@@ -763,9 +830,66 @@ lib.callback.register('XS-CriminalTablet:admin:graffitiWipeGang', guarded(functi
     return { ok = true }
 end))
 
+-- ── street doc ──────────────────────────────────────────────
+lib.callback.register('XS-CriminalTablet:admin:docState', guarded(function(src)
+    return Medic.AdminState()
+end))
+
+lib.callback.register('XS-CriminalTablet:admin:docSetHere', guarded(function(src)
+    local ped = GetPlayerPed(src)
+    local c = GetEntityCoords(ped)
+    Medic.Place({ x = c.x, y = c.y, z = c.z - 1.0 }, GetEntityHeading(ped))
+    logAdmin(src, 'Street doc moved', 'to staff position', Discord.Color.info)
+    return { ok = true }
+end))
+
+lib.callback.register('XS-CriminalTablet:admin:docSet', guarded(function(src, pos)
+    if type(pos) ~= 'table' or not tonumber(pos.x) or not tonumber(pos.y) then return { ok = false, error = 'needs a position' } end
+    local old = Medic.Location()
+    Medic.Place({ x = tonumber(pos.x), y = tonumber(pos.y) }, old and old.h or 0.0)
+    logAdmin(src, 'Street doc moved', 'on the map', Discord.Color.info)
+    return { ok = true }
+end))
+
+lib.callback.register('XS-CriminalTablet:admin:docReset', guarded(function(src)
+    Medic.Reset()
+    logAdmin(src, 'Street doc moved', 'back to config.lua', Discord.Color.info)
+    return { ok = true }
+end))
+
 -- ── garage ──────────────────────────────────────────────────
+-- Every car the framework knows, with the config shortcuts first.
+local function vehicleCatalogue()
+    local out, seen = {}, {}
+    for _, m in ipairs(Config.Garage.adminGrantModels or {}) do
+        if m.model and not seen[m.model] then
+            seen[m.model] = true
+            out[#out + 1] = { model = m.model, label = m.label or m.model, category = 'Shortcut' }
+        end
+    end
+    local list
+    if Framework.name == 'qbox' then
+        local ok, res = pcall(function() return exports.qbx_core:GetVehiclesByName() end)
+        list = ok and res or nil
+    elseif Framework.core and Framework.core.Shared then
+        list = Framework.core.Shared.Vehicles
+    end
+    local rest = {}
+    for name, v in pairs(list or {}) do
+        local model = type(v) == 'table' and v.model or name
+        if type(model) == 'string' and not seen[model] then
+            seen[model] = true
+            local label = type(v) == 'table' and (((v.brand and v.brand ~= '') and (v.brand .. ' ') or '') .. (v.name or model)) or model
+            rest[#rest + 1] = { model = model, label = label, category = type(v) == 'table' and v.category or nil }
+        end
+    end
+    table.sort(rest, function(a, b) return a.label:lower() < b.label:lower() end)
+    for _, v in ipairs(rest) do out[#out + 1] = v end
+    return out
+end
+
 lib.callback.register('XS-CriminalTablet:admin:garageList', guarded(function(src, gangId)
-    return { vehicles = Garage.AdminList(gangId), models = Config.Garage.adminGrantModels }
+    return { vehicles = Garage.AdminList(gangId), models = vehicleCatalogue() }
 end))
 
 lib.callback.register('XS-CriminalTablet:admin:garageGrant', guarded(function(src, gangId, model, label)
@@ -854,6 +978,7 @@ end))
 lib.callback.register('XS-CriminalTablet:admin:getDashboard', guarded(function(src)
     local zoneTotal = MySQL.scalar.await('SELECT COUNT(*) FROM xs_territories') or 0
     return {
+        staffName = Framework.GetName(src) or GetPlayerName(src),
         gangCount = MySQL.scalar.await('SELECT COUNT(*) FROM xs_gangs') or 0,
         memberCount = MySQL.scalar.await('SELECT COUNT(*) FROM xs_gang_members') or 0,
         zoneCount = MySQL.scalar.await('SELECT COUNT(*) FROM xs_territories WHERE gang_id IS NOT NULL') or 0,

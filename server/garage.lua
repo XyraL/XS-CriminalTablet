@@ -127,6 +127,7 @@ function Garage.Take(src, vehicleId)
     MySQL.update('UPDATE xs_gang_vehicles SET stored = 0 WHERE id = ?', { row.id })
 
     local point = garagePoint(gang.id)
+    local placed = Placeables.FindFor(gang.id, 'garage')
     Gangs.Log(gang.id, ('%s took out %s (%s)'):format(
         Framework.GetName(src) or 'Someone', row.label, row.plate), 'garage')
     Gangs.Broadcast(gang.id, 'garage', {})
@@ -137,10 +138,32 @@ function Garage.Take(src, vehicleId)
         label = row.label,
         plate = row.plate,
         props = row.props and json.decode(row.props) or nil,
-        spawn = { x = point.x, y = point.y, z = point.z },
+        spawn = { x = point.x, y = point.y, z = point.z, heading = placed and placed.heading or 0.0 },
         giveKeys = Config.Garage.giveKeys,
     }
 end
+
+-- The client spawns the car, then asks for keys to it here. Only a car the
+-- crew really has out, with that plate on it, gets keys.
+RegisterNetEvent('XS-CriminalTablet:server:garageKeys', function(netId, plate)
+    local src = source
+    if not Config.Garage.giveKeys or type(plate) ~= 'string' then return end
+    local gang = Gangs.GetBySource(src)
+    if not gang then return end
+    local row = MySQL.single.await('SELECT id FROM xs_gang_vehicles WHERE gang_id = ? AND plate = ? AND stored = 0', { gang.id, plate })
+    if not row then return end
+
+    local vehicle = 0
+    for _ = 1, 40 do
+        vehicle = NetworkGetEntityFromNetworkId(tonumber(netId) or 0)
+        if vehicle ~= 0 and DoesEntityExist(vehicle) then break end
+        vehicle = 0
+        Wait(50)
+    end
+    if vehicle == 0 then return end
+    if Keys.Trim(GetVehicleNumberPlateText(vehicle)) ~= Keys.Trim(plate) then return end
+    Keys.Give(src, vehicle, plate)
+end)
 
 function Garage.Delete(src, vehicleId)
     if not Gangs.HasPerm(src, 'garage_delete') then return false, 'no permission' end

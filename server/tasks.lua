@@ -18,7 +18,13 @@ Tasks = {}
 
 local active = {}  -- [src] = { id, stage, startedAt, ..., coop?, crew?, leaderSrc?, cids? }
 local byId = {}
-for _, t in ipairs(Config.Tasks) do byId[t.id] = t end
+
+-- Rebuilt whenever the builder changes a job. Entries are never dropped, so
+-- a job already running when its definition changes can still finish.
+function Tasks.Index()
+    for _, t in ipairs(Config.Tasks) do byId[t.id] = t end
+end
+Tasks.Index()
 
 local crews = {}              -- [leaderSrc] = { members = {...}, names = {src=name} }
 local pendingCoopInvites = {} -- [targetSrc] = { fromSrc, fromName }
@@ -479,18 +485,22 @@ local function rewardMember(src, cid, def, cashOverride)
         'ON DUPLICATE KEY UPDATE completed_at = ?',
         { cid, def.id, os.time() * 1000, os.time() * 1000 })
 
-    if gang then Gangs.AddMemberRep(cid, def.reward, 'task:' .. def.id) end
+    -- A crew that bought Crew Contracts earns more on every job.
+    local dropPct = gang and Contracts and Contracts.DropBonusFor and Contracts.DropBonusFor(gang.id) or 0
+    local rep = math.floor(def.reward * (1 + dropPct / 100) + 0.5)
+    if gang then Gangs.AddMemberRep(cid, rep, 'task:' .. def.id) end
 
     -- Contracts pay cash on top of rep. Co-op splits the cash across the
     -- crew (the bonus is applied before the split by the caller), but XP
     -- and rep are never split — everyone gets the full amount.
-    local cash = math.floor(cashOverride or def.cash or 0)
+    local cash = math.floor((cashOverride or def.cash or 0) * (1 + dropPct / 100))
     if cash > 0 then
         Framework.AddMoney(src, 'cash', cash, 'gang-contract')
     end
 
-    Framework.Notify(src, ('Job complete — +%d rep, +%d XP%s.'):format(
-        def.reward, def.xp or 0, cash > 0 and (', $' .. cash) or ''), 'success')
+    Framework.Notify(src, ('Job complete — +%d rep, +%d XP%s%s.'):format(
+        rep, def.xp or 0, cash > 0 and (', $' .. cash) or '',
+        dropPct > 0 and (' (Crew Contracts +%d%%)'):format(dropPct) or ''), 'success')
     if leveledUp then
         Framework.Notify(src, ('Rank up! You are now a %s.'):format(taskLevelDefFor(newLevel).title), 'success')
     end

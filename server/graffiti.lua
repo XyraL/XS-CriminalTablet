@@ -261,6 +261,17 @@ function Graffiti.Spray(src, payload)
     loadTags()
     broadcast()
 
+    if Intel then
+        local zoneKey, zone = Territory.ZoneAt(coords)
+        if zone and zone.gangId and zone.gangId ~= gang.id then
+            Intel.Event('tag', gang.id, zone.gangId, { detail = zone.label, coords = coords, name = Framework.GetName(src), key = zoneKey,
+                alert = ('%s tagged a wall on %s.'):format(gang.label, zone.label) })
+        end
+        if covered and (not zone or zone.gangId ~= covered.gang_id) then
+            Intel.Record('cover', gang.id, covered.gang_id, zone and zone.label or 'a wall', coords, Framework.GetName(src))
+        end
+    end
+
     local reward = covered and Config.Rep.rewards.graffiti_covered or Config.Rep.rewards.graffiti_sprayed
     Gangs.AddMemberRep(Framework.GetCitizenId(src), reward, 'graffiti')
     Gangs.Log(gang.id, ('%s put up a tag%s'):format(

@@ -40,70 +40,89 @@
         return false;
     }
 
-    // ── boot ──
-    const ADMIN_BOOT = [
-        'ELEVATING PRIVILEGES...',
-        'VERIFYING ACE PRINCIPAL...',
-        'MOUNTING CREW DATABASE <span class="ok">[OK]</span>',
-        'STAFF ACCESS GRANTED',
-    ];
-
-    function playAdminBoot() {
-        const screen = $('#adminBootScreen');
-        const lines = $('#adminBootLines');
-        if (!screen || !lines) return;
-        lines.innerHTML = '';
-        screen.classList.remove('is-hidden');
-        let i = 0;
-        (function next() {
-            if (i >= ADMIN_BOOT.length) {
-                setTimeout(() => screen.classList.add('is-hidden'), 260);
-                return;
-            }
-            const div = document.createElement('div');
-            div.className = 'boot-line';
-            div.innerHTML = ADMIN_BOOT[i] + (i === ADMIN_BOOT.length - 1 ? '<span class="boot-cursor"></span>' : '');
-            lines.appendChild(div);
-            requestAnimationFrame(() => div.classList.add('is-shown'));
-            i++;
-            setTimeout(next, 190);
-        })();
-    }
-
     window.openAdminUI = async function openAdminUI() {
-        // Staff console has its own identity — never inherit whatever
-        // gang colour the last tablet set.
-        applyTheme('#ff4d5a');
+        // The builder has its own colour; never inherit whatever gang
+        // colour the last tablet set.
+        applyTheme('#4d8bff');
         // Only ever one device on screen; both share the same NUI page.
         $('#root').classList.add('hidden');
         $('#adminRoot').classList.remove('hidden');
-        playAdminBoot();
+        window.XS.tickClock();
         paintSwatches();
         await refresh();
         if (window.XSMapEdit) {
             window.XSMapEdit.init();
             window.XSMapEdit.refresh();
         }
+        if (window.XS.BuilderSettings) window.XS.BuilderSettings.load();
     };
-
-    // The wizard writes gangs and zones of its own, so it needs a way to
-    // pull the rest of the panel back into step with the database.
-    window.XSAdmin = { refresh };
 
     $('#adminCloseBtn').onclick = () => nui('admin:close');
 
-    // ── rail tabs ──
-    $$('#adminRail .rail-app').forEach((btn) => {
+    // ── pages ──
+    // Pages without a nav entry of their own light up the one they belong to.
+    const PAGE_OWNER = { 'admin-setup': 'admin-gangs' };
+    const PAGE_HEAD = {
+        'admin-setup': ['New crew', 'Name it, pick a boss, give it a block and its first property. Everything here can be changed later.'],
+    };
+    let currentPage = 'admin-dashboard';
+
+    function go(tab) {
+        const owner = PAGE_OWNER[tab] || tab;
+        const navBtn = $(`#adminRail .bx-navitem[data-tab="${owner}"]`);
+        if (!navBtn) return;
+        if (currentPage === 'admin-settings' && tab !== 'admin-settings' && window.XS.BuilderSettings
+            && window.XS.BuilderSettings.isDirty() && !window.XS.BuilderSettings.confirmLeave(() => go(tab))) return;
+        currentPage = tab;
+        $$('#adminRail .bx-navitem').forEach((b) => b.classList.toggle('on', b === navBtn));
+        $$('.admin-surface > .tabview').forEach((v) => v.classList.toggle('is-active', v.dataset.tabview === tab));
+        const [title, desc] = PAGE_HEAD[tab] || [navBtn.dataset.title, navBtn.dataset.desc];
+        $('#adminPageHead h1').textContent = title;
+        $('#adminPageHead p').textContent = desc;
+        $('#adminPageActs').innerHTML = tab === 'admin-gangs'
+            ? '<button class="bx-btn primary" data-go="admin-setup"><i class="fas fa-plus"></i> New crew</button>'
+            : '';
+        $('#adminPage').scrollTop = 0;
+        onAdminTab(tab);
+    }
+
+    // The wizard writes gangs and zones of its own, so it needs a way to
+    // pull the rest of the panel back into step with the database.
+    function openGang(id) {
+        openGangId = id;
+        $('#gangFilter').value = '';
+        go('admin-gangs');
+        const card = $(`#adminGangList [data-gang="${id}"]`);
+        if (card) card.scrollIntoView({ block: 'start' });
+    }
+
+    function findZone(zone) {
+        go('admin-zones');
+        $('#zoneFilter').value = zone;
+        renderZones();
+    }
+
+    window.XSAdmin = { refresh, go, toast, openGang, findZone, page: () => currentPage, data: () => ({ overview, dashboard }) };
+
+    // Clicking the page you are already on takes you back to its list.
+    $$('#adminRail .bx-navitem').forEach((btn) => {
         btn.onclick = () => {
-            $$('#adminRail .rail-app').forEach((b) => b.classList.toggle('is-active', b === btn));
-            $$('.admin-surface > .tabview').forEach((v) =>
-                v.classList.toggle('is-active', v.dataset.tabview === btn.dataset.tab));
-            onAdminTab(btn.dataset.tab);
+            if (btn.dataset.tab === currentPage && currentPage === 'admin-jobs' && window.XS.BuilderJobs) window.XS.BuilderJobs.home();
+            go(btn.dataset.tab);
         };
+    });
+    document.addEventListener('click', (e) => {
+        const t = e.target.closest('[data-go]');
+        if (t && $('#adminRoot').contains(t)) go(t.dataset.go);
     });
 
     function onAdminTab(tab) {
         switch (tab) {
+            case 'admin-settings': if (window.XS.BuilderSettings) window.XS.BuilderSettings.mount($('#bsRoot')); break;
+            case 'admin-radial': if (window.XS.BuilderRadial) window.XS.BuilderRadial.mount($('#brRoot')); break;
+            case 'admin-jobs': if (window.XS.BuilderJobs) window.XS.BuilderJobs.mount($('#bjRoot')); break;
+            case 'admin-content': if (window.XS.BuilderContent) window.XS.BuilderContent.mount($('#bcRoot')); break;
+            case 'admin-approvals': if (window.XS.BuilderApprovals) window.XS.BuilderApprovals.mount($('#baRoot')); break;
             case 'admin-dashboard': renderDashboard(); break;
             case 'admin-gangs': renderGangs(); break;
             case 'admin-zones': renderZones(); break;
@@ -128,7 +147,27 @@
     }
 
     // ═══ DASHBOARD ═══
+    function renderChrome() {
+        const crews = (overview.gangs || []).length;
+        const zones = (overview.territories || []).length;
+        const wars = dashboard ? dashboard.activeWars || 0 : 0;
+        $('#bxPillCrews span').textContent = `${crews} ${crews === 1 ? 'crew' : 'crews'}`;
+        $('#bxPillWars span').textContent = wars ? `${wars} live` : 'No wars';
+        $('#bxPillWars').classList.toggle('off', !wars);
+        $('#bxPillWars').classList.toggle('hot', !!wars);
+        $('#bxCountCrews').textContent = crews;
+        $('#bxCountTurf').textContent = zones;
+        $('#bxCountWars').textContent = wars;
+        $('#bxCountWars').classList.toggle('hidden', !wars);
+        if (window.XS.BuilderApprovals) window.XS.BuilderApprovals.count();
+        if (dashboard && dashboard.staffName) {
+            $('#bxMe').textContent = dashboard.staffName;
+            $('#bxMeAvatar').textContent = initials(dashboard.staffName);
+        }
+    }
+
     function renderDashboard() {
+        renderChrome();
         if (!dashboard) return;
         $('#adminStatGrid').innerHTML = statGrid([
             { label: 'Crews', icon: 'fa-users-gear', value: dashboard.gangCount },
@@ -256,6 +295,74 @@
         await refresh();
     };
 
+    // ═══ PLAYER PICKER ═══
+    // Type a name, server ID or citizenid and pick from online players and
+    // offline characters. The box ends up holding the citizenid exactly as
+    // the framework saved it, which is what every staff action expects.
+    function attachPicker(input) {
+        if (!input || input.dataset.pickerOn) return;
+        input.dataset.pickerOn = '1';
+        input.autocomplete = 'off';
+        input.placeholder = 'Name, server ID or citizenid';
+        const wrap = document.createElement('div');
+        wrap.className = 'bx-picker';
+        input.parentNode.insertBefore(wrap, input);
+        wrap.appendChild(input);
+        const pop = document.createElement('div');
+        pop.className = 'bx-pickpop hidden';
+        wrap.appendChild(pop);
+        const note = document.createElement('small');
+        note.className = 'bx-picknote';
+        note.textContent = input.dataset.pickedName || '';
+        wrap.appendChild(note);
+        let timer = null;
+        let seq = 0;
+        let items = [];
+        let hl = 0;
+
+        const pick = (i) => {
+            const p = items[i];
+            if (!p) return;
+            input.value = p.citizenid;
+            note.textContent = p.gang ? `${p.name} · already in ${p.gang}` : p.name;
+            note.classList.toggle('warn', !!p.gang);
+            pop.classList.add('hidden');
+        };
+        const paint = () => {
+            pop.innerHTML = items.length ? items.map((p, i) => `<button type="button" class="bx-pickopt ${i === hl ? 'hl' : ''}" data-i="${i}">
+                <span class="bx-pickav ${p.online ? 'on' : ''}">${escapeHtml(initials(p.name))}</span>
+                <div><b>${escapeHtml(p.name)}</b><small>${escapeHtml(p.citizenid)} · ${p.online ? `online, ID ${p.src}` : 'offline'}${p.gang ? ` · in ${escapeHtml(p.gang)}` : ''}</small></div>
+            </button>`).join('') : '<div class="bx-pickempty">Nobody found</div>';
+            pop.classList.remove('hidden');
+            pop.querySelectorAll('[data-i]').forEach((b) => b.addEventListener('mousedown', (e) => { e.preventDefault(); pick(Number(b.dataset.i)); }));
+        };
+        input.addEventListener('input', () => {
+            note.textContent = '';
+            note.classList.remove('warn');
+            clearTimeout(timer);
+            const q = input.value.trim();
+            if (!q) { pop.classList.add('hidden'); return; }
+            timer = setTimeout(async () => {
+                const mine = ++seq;
+                const res = await acall('XS-CriminalTablet:admin:findPlayers', q);
+                if (mine !== seq) return;
+                items = Array.isArray(res) ? res : [];
+                hl = 0;
+                paint();
+            }, 220);
+        });
+        input.addEventListener('keydown', (e) => {
+            if (pop.classList.contains('hidden')) return;
+            if (e.key === 'ArrowDown') { e.preventDefault(); hl = Math.min(items.length - 1, hl + 1); paint(); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); hl = Math.max(0, hl - 1); paint(); }
+            else if (e.key === 'Enter') { e.preventDefault(); pick(hl); }
+            else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); pop.classList.add('hidden'); }
+        });
+        input.addEventListener('blur', () => setTimeout(() => pop.classList.add('hidden'), 120));
+    }
+    window.XSPicker = attachPicker;
+    attachPicker($('#newGangBoss'));
+
     // ═══ GANG LIST ═══
     $('#gangFilter').oninput = () => renderGangs();
 
@@ -273,7 +380,7 @@
         list.innerHTML = gangs.map((g) => `
             <div class="admin-gang ${openGangId === g.id ? 'is-open' : ''}" data-gang="${g.id}">
                 <div class="admin-gang-head">
-                    <span class="admin-gang-swatch" style="background:${escapeHtml(g.color || '#666')}"></span>
+                    ${g.logo ? `<span class="admin-gang-logo" style="background:${escapeHtml(g.color || '#666')}"><img src="${escapeHtml(g.logo)}" alt=""></span>` : `<span class="admin-gang-swatch" style="background:${escapeHtml(g.color || '#666')}"></span>`}
                     <div class="admin-gang-main">
                         <div class="admin-gang-name">${escapeHtml(g.label)}</div>
                         <div class="admin-gang-sub">
@@ -330,9 +437,15 @@
         return `<div class="form-grid">
             <label class="field"><span>Display name</span>
                 <input type="text" data-f="label" data-g="${g.id}" value="${escapeHtml(g.label)}" /></label>
-            <label class="field"><span>Boss citizenid</span>
+            <label class="field"><span>Boss</span>
                 <input type="text" data-f="boss" data-g="${g.id}" value="${escapeHtml(g.owner || '')}"
-                    placeholder="${escapeHtml(g.ownerName || 'none')}" /></label>
+                    data-picked-name="${escapeHtml(g.ownerName || '')}" data-picker /></label>
+            <label class="field"><span>Framework gang <em>(members come from it)</em></span>
+                <select data-f="frameworkGang" data-g="${g.id}">
+                    <option value="">Not linked</option>
+                    ${frameworkGangs().map((f) => `<option value="${escapeHtml(f.name)}" ${f.name === g.framework_gang ? 'selected' : ''}>${escapeHtml(f.label)} (${escapeHtml(f.name)})</option>`).join('')}
+                    ${g.framework_gang && !frameworkGangs().some((f) => f.name === g.framework_gang) ? `<option value="${escapeHtml(g.framework_gang)}" selected>${escapeHtml(g.framework_gang)} (not found)</option>` : ''}
+                </select></label>
             <label class="field"><span>Member cap <em>(0 = default)</em></span>
                 <input type="number" min="0" data-f="maxMembers" data-g="${g.id}" value="${g.max_members || 0}" /></label>
             <label class="field"><span>Rep</span>
@@ -353,11 +466,6 @@
         <div class="inline-form">
             <button class="btn btn-accent btn-sm" data-save="${g.id}"><i class="fas fa-floppy-disk"></i> Save settings</button>
             <button class="btn btn-ghost btn-sm" data-savebank="${g.id}">Set treasury</button>
-        </div>
-        <h2 class="section-head"><span>Add a member</span></h2>
-        <div class="inline-form">
-            <input type="text" data-addcid="${g.id}" placeholder="citizenid" />
-            <button class="btn btn-ghost btn-sm" data-addmember="${g.id}"><i class="fas fa-user-plus"></i> Add</button>
         </div>`;
     }
 
@@ -371,7 +479,12 @@
         </div>`;
     }
 
+    function frameworkGangs() {
+        return (overview && overview.frameworkGangs) || [];
+    }
+
     function wireSettingsForms() {
+        $$('#adminGangList [data-picker]').forEach(attachPicker);
         $$('#adminGangList [data-save]').forEach((b) => {
             b.onclick = async () => {
                 const id = Number(b.dataset.save);
@@ -395,15 +508,6 @@
                 const input = b.closest('.admin-gang').querySelector(`[data-bank="${id}"]`);
                 const res = await acall('XS-CriminalTablet:admin:setBank', id, Number(input.value));
                 if (report(res, 'Treasury set.')) await refresh();
-            };
-        });
-
-        $$('#adminGangList [data-addmember]').forEach((b) => {
-            b.onclick = async () => {
-                const id = Number(b.dataset.addmember);
-                const input = b.closest('.admin-gang').querySelector(`[data-addcid="${id}"]`);
-                const res = await acall('XS-CriminalTablet:admin:addMember', id, input.value.trim(), 0);
-                if (report(res, 'Added.')) { input.value = ''; await refresh(); loadGangTab(id, 'members'); }
             };
         });
 
@@ -450,14 +554,32 @@
             const members = await acall('XS-CriminalTablet:admin:getMembers', gangId) || [];
             const ranks = await acall('XS-CriminalTablet:admin:getRanks', gangId);
             const box = row.querySelector('[data-members]');
-            if (!members.length) {
-                box.innerHTML = '<div class="empty"><i class="fas fa-user-slash"></i>Nobody in this crew.</div>';
-                return;
-            }
             const rankOpts = ((ranks && ranks.ranks) || []).map((r) =>
                 ({ grade: r.grade, name: r.name }));
+            const addForm = `<div class="inline-form add-member">
+                <input type="text" data-addcid="${gangId}" />
+                <select data-addgrade="${gangId}">
+                    <option value="">Usual starting rank</option>
+                    ${rankOpts.map((r) => `<option value="${r.grade}">${escapeHtml(r.name)}</option>`).join('')}
+                </select>
+                <button class="btn btn-accent btn-sm" data-addmember="${gangId}"><i class="fas fa-user-plus"></i> Add member</button>
+            </div>`;
+            const wireAdd = () => {
+                const input = box.querySelector(`[data-addcid="${gangId}"]`);
+                attachPicker(input);
+                box.querySelector('[data-addmember]').onclick = async () => {
+                    const grade = box.querySelector(`[data-addgrade="${gangId}"]`).value;
+                    const res = await acall('XS-CriminalTablet:admin:addMember', gangId, input.value.trim(), grade === '' ? null : Number(grade));
+                    if (report(res, 'Added.')) { await refresh(); loadGangTab(gangId, 'members'); }
+                };
+            };
+            if (!members.length) {
+                box.innerHTML = addForm + '<div class="empty"><i class="fas fa-user-slash"></i>Nobody in this crew.</div>';
+                wireAdd();
+                return;
+            }
 
-            box.innerHTML = members.map((m) => `
+            box.innerHTML = addForm + members.map((m) => `
                 <div class="tile">
                     <span class="tile-avatar">${escapeHtml(initials(m.name))}</span>
                     <div class="tile-main">
@@ -495,6 +617,7 @@
                     report(res, 'Rank set.');
                 };
             });
+            wireAdd();
             box.querySelectorAll('[data-akick]').forEach((b) => {
                 b.onclick = async () => {
                     const res = await acall('XS-CriminalTablet:admin:kickMember',
@@ -574,10 +697,7 @@
 
             box.innerHTML = `
                 <div class="inline-form">
-                    <select data-grantmodel="${gangId}">
-                        ${models.map((m) => `<option value="${escapeHtml(m.model)}">${escapeHtml(m.label)}</option>`).join('')}
-                    </select>
-                    <input type="text" data-grantcustom="${gangId}" placeholder="or a model name" />
+                    <input type="text" data-grantmodel="${gangId}" placeholder="Search ${models.length} vehicles or type a model" style="flex:1;min-width:260px" />
                     <button class="btn btn-accent btn-sm" data-grant="${gangId}"><i class="fas fa-plus"></i> Grant</button>
                 </div>
                 <div class="tile-list">
@@ -595,12 +715,16 @@
                         </div>`).join('') : '<div class="empty"><i class="fas fa-car-side"></i>No vehicles.</div>'}
                 </div>`;
 
+            const modelBox = box.querySelector(`[data-grantmodel="${gangId}"]`);
+            window.XSList(modelBox, {
+                icon: 'fa-car-side',
+                options: models.map((m) => ({ value: m.model, label: m.label, sub: m.category })),
+            });
             box.querySelector(`[data-grant="${gangId}"]`).onclick = async () => {
-                const custom = box.querySelector(`[data-grantcustom="${gangId}"]`).value.trim();
-                const picked = box.querySelector(`[data-grantmodel="${gangId}"]`).value;
-                const model = custom || picked;
+                const model = modelBox.value.trim();
                 if (!model) return toast('Pick or type a model.', 'error');
-                const res = await acall('XS-CriminalTablet:admin:garageGrant', gangId, model, custom ? custom : null);
+                const known = models.find((m) => m.model.toLowerCase() === model.toLowerCase());
+                const res = await acall('XS-CriminalTablet:admin:garageGrant', gangId, model, known ? known.label : null);
                 if (report(res, 'Vehicle granted.')) loadGangTab(gangId, 'garage');
             };
             box.querySelectorAll('[data-delveh]').forEach((b) => {

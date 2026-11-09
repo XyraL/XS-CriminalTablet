@@ -39,9 +39,73 @@ AddEventHandler('gameEventTriggered', function(name, args)
 end)
 
 -- ── state ───────────────────────────────────────────────────
+local myGangId = nil
+local lastLeader = nil
+local objectiveBlips = {}
+
+AddEventHandler('XS-CriminalTablet:client:gangIdChanged', function(gangId) myGangId = gangId end)
+
+local function mySide(state)
+    if not state or not myGangId then return nil end
+    if state.attackerId == myGangId then return 'attack' end
+    if state.defenderId == myGangId then return 'defend' end
+    return nil
+end
+
+local function hexToRgb(hex)
+    if type(hex) ~= 'string' then return 245, 165, 36 end
+    hex = hex:gsub('#', '')
+    if #hex ~= 6 then return 245, 165, 36 end
+    return tonumber(hex:sub(1, 2), 16) or 245, tonumber(hex:sub(3, 4), 16) or 165, tonumber(hex:sub(5, 6), 16) or 36
+end
+
+local function clearObjectiveBlips()
+    for _, b in pairs(objectiveBlips) do RemoveBlip(b) end
+    objectiveBlips = {}
+end
+
+-- One lettered blip per objective, coloured by whoever holds it.
+local function updateObjectiveBlips(state)
+    if not state or state.kind ~= 'war' or not state.objectives or #state.objectives == 0 then clearObjectiveBlips() return end
+    local side = mySide(state)
+    for _, o in ipairs(state.objectives) do
+        local blip = objectiveBlips[o.id]
+        if not blip then
+            blip = AddBlipForCoord(o.x + 0.0, o.y + 0.0, o.z + 0.0)
+            SetBlipSprite(blip, 38)
+            SetBlipScale(blip, 0.9)
+            SetBlipAsShortRange(blip, false)
+            BeginTextCommandSetBlipName('STRING')
+            AddTextComponentSubstringPlayerName(('Objective %s · %s'):format(o.id, o.label))
+            EndTextCommandSetBlipName(blip)
+            objectiveBlips[o.id] = blip
+        end
+        SetBlipColour(blip, o.owner == nil and 4 or (o.owner == side and 2 or 1))
+        SetBlipFlashes(blip, o.contested or (o.taking ~= nil))
+    end
+end
+
+-- Taking the lead and losing it both get a sound, so it registers even
+-- mid-fight with the HUD out of sight.
+local function leadCue(state)
+    local lead = (state.scoreAttack or 0) - (state.scoreDefend or 0)
+    local leader = lead > 0 and 'attack' or (lead < 0 and 'defend' or nil)
+    if state.kind == 'war' and leader and leader ~= lastLeader and lastLeader ~= nil then
+        if leader == mySide(state) then PlaySoundFrontend(-1, 'CHECKPOINT_PERFECT', 'HUD_MINI_GAME_SOUNDSET', true)
+        else PlaySoundFrontend(-1, 'TIMER_STOP', 'HUD_MINI_GAME_SOUNDSET', true) end
+        SendNUIMessage({ action = 'warLead', data = { side = leader } })
+    end
+    if leader then lastLeader = leader elseif lastLeader == nil then lastLeader = 'none' end
+end
+
 RegisterNetEvent('XS-CriminalTablet:client:sync', function(event, data)
     if event == 'war' then
         warState = data
+        if data then leadCue(data) else lastLeader = nil end
+        updateObjectiveBlips(data)
+        SendNUIMessage({ action = 'warHud', data = data and { state = data, mine = mySide(data) } or nil })
+    elseif event == 'warFeed' then
+        SendNUIMessage({ action = 'warFeed', data = data })
     elseif event == 'stash' then
         stashWindow = data
         if stashBlip then RemoveBlip(stashBlip) stashBlip = nil end
@@ -63,18 +127,10 @@ CreateThread(function()
     Wait(4000)
     local res = lib.callback.await('XS-CriminalTablet:war:getState', false)
     if res then
-        warState = res.war
+        TriggerEvent('XS-CriminalTablet:client:sync', 'war', res.war)
         if res.stash then TriggerEvent('XS-CriminalTablet:client:sync', 'stash', res.stash) end
     end
 end)
-
--- ── HUD ─────────────────────────────────────────────────────
-local function hexToRgb(hex)
-    if type(hex) ~= 'string' then return 245, 165, 36 end
-    hex = hex:gsub('#', '')
-    if #hex ~= 6 then return 245, 165, 36 end
-    return tonumber(hex:sub(1, 2), 16) or 245, tonumber(hex:sub(3, 4), 16) or 165, tonumber(hex:sub(5, 6), 16) or 36
-end
 
 local function text(str, x, y, scale, r, g, b, a, centre)
     SetTextFont(4)
@@ -87,55 +143,25 @@ local function text(str, x, y, scale, r, g, b, a, centre)
     EndTextCommandDisplayText(x, y)
 end
 
-local function drawRaidHud()
-    local x, y = 0.5, 0.06
-    local remaining = math.max(0, math.floor(((warState.phase == 'prep' and warState.startsAt or warState.endsAt) - nowMs()) / 1000))
-
-    DrawRect(x, y + 0.012, 0.30, 0.075, 0, 0, 0, 160)
-
-    if warState.phase == 'prep' then
-        text(('RAID INCOMING — %s'):format(warState.attackerLabel), x, y - 0.012, 0.42, 229, 72, 77, 240, true)
-        text(('Goes live in %ds'):format(remaining), x, y + 0.018, 0.34, 200, 205, 212, 230, true)
-        return
+-- ── world markers ───────────────────────────────────────────
+-- The scoreboard itself is drawn by the page; the game only marks the
+-- ground: the HQ ring in a raid, the objectives in a war.
+local function drawWarMarkers()
+    if warState.kind == 'raid' and warState.target then
+        local t = warState.target
+        local r, g, b = hexToRgb(warState.attackerColor)
+        local size = (warState.radius or 40.0) * 2.0
+        DrawMarker(1, t.x + 0.0, t.y + 0.0, t.z - 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, size, size, 1.2, r, g, b, 50, false, false, 2, false, nil, nil, false)
+    elseif warState.kind == 'war' then
+        local side = mySide(warState)
+        local size = (warState.objectiveRadius or 12.0) * 2.0
+        for _, o in ipairs(warState.objectives or {}) do
+            local r, g, b = 245, 245, 245
+            if o.owner then r, g, b = hexToRgb(o.owner == 'attack' and warState.attackerColor or warState.defenderColor) end
+            if o.contested then r, g, b = 240, 82, 95 end
+            DrawMarker(1, o.x + 0.0, o.y + 0.0, o.z - 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, size, size, 1.6, r, g, b, o.owner == side and 45 or 70, false, false, 2, false, nil, nil, false)
+        end
     end
-
-    text(('%s  vs  %s'):format(warState.attackerLabel, warState.defenderLabel), x, y - 0.018, 0.40, 235, 237, 240, 240, true)
-
-    -- Hold meter
-    local w, h = 0.26, 0.014
-    local pct = math.max(0, math.min(1, (warState.holdProgress or 0) / math.max(1, warState.holdTarget or 1)))
-    DrawRect(x, y + 0.016, w, h, 40, 44, 52, 220)
-    local r, g, b = hexToRgb(warState.attackerColor)
-    DrawRect(x - w / 2 + (w * pct) / 2, y + 0.016, w * pct, h, r, g, b, 235)
-
-    text(('%d attacking · %d defending · %ds left'):format(
-        warState.scoreAttack or 0, warState.scoreDefend or 0, remaining), x, y + 0.030, 0.30, 150, 156, 166, 220, true)
-end
-
-local function drawWarHud()
-    local x, y = 0.5, 0.06
-    local remaining = math.max(0, math.floor((warState.endsAt - nowMs()) / 1000))
-    local mins, secs = math.floor(remaining / 60), remaining % 60
-
-    DrawRect(x, y + 0.012, 0.32, 0.075, 0, 0, 0, 160)
-    text(('WAR — %s  %d : %d  %s'):format(
-        warState.attackerLabel, warState.scoreAttack or 0, warState.scoreDefend or 0, warState.defenderLabel),
-        x, y - 0.018, 0.40, 235, 237, 240, 240, true)
-
-    -- A single bar with the midpoint as parity: it leans toward whoever
-    -- is winning, which reads faster than two separate numbers.
-    local w, h = 0.28, 0.014
-    local lead = (warState.scoreAttack or 0) - (warState.scoreDefend or 0)
-    local frac = 0.5 + (lead / math.max(1, warState.scoreToWin or 15)) * 0.5
-    frac = math.max(0.02, math.min(0.98, frac))
-
-    DrawRect(x, y + 0.016, w, h, 40, 44, 52, 220)
-    local ar, ag, ab = hexToRgb(warState.attackerColor)
-    DrawRect(x - w / 2 + (w * frac) / 2, y + 0.016, w * frac, h, ar, ag, ab, 235)
-    DrawRect(x, y + 0.016, 0.002, h + 0.006, 255, 255, 255, 200)
-
-    text(('%02d:%02d left · first to %d ahead wins'):format(mins, secs, warState.scoreToWin or 15),
-        x, y + 0.030, 0.30, 150, 156, 166, 220, true)
 end
 
 -- Compass arrow + live distance to the exposed safe.
@@ -167,7 +193,7 @@ CreateThread(function()
         local sleep = 400
         if warState and warState.phase ~= 'finished' then
             sleep = 0
-            if warState.kind == 'raid' then drawRaidHud() else drawWarHud() end
+            drawWarMarkers()
         end
         if stashWindow and stashWindow.coords then
             sleep = 0
@@ -186,7 +212,7 @@ RegisterNetEvent('XS-CriminalTablet:client:tryLootStash', function(coords)
 
     local finished = XSAnim.Progress({
         duration = Config.War.stash.lootSeconds * 1000,
-        label = 'Cracking the safe...',
+        label = 'Breaking into the locker...',
         useWhileDead = false,
         canCancel = true,
         disable = { move = true, combat = true },
@@ -196,13 +222,13 @@ RegisterNetEvent('XS-CriminalTablet:client:tryLootStash', function(coords)
 
     local res = lib.callback.await('XS-CriminalTablet:war:lootStash', false)
     if not res or not res.ok then
-        lib.notify({ description = (res and res.error) or 'Could not crack it', type = 'error' })
+        lib.notify({ description = (res and res.error) or 'Could not get in', type = 'error' })
         return
     end
 
     local loot = res.loot or {}
     lib.notify({
-        description = ('Cracked it — $%d and %d item stack%s.'):format(
+        description = ('You are in — $%d and %d item stack%s.'):format(
             loot.cash or 0, #(loot.items or {}), #(loot.items or {}) == 1 and '' or 's'),
         type = 'success',
     })
@@ -270,17 +296,20 @@ AddEventHandler('onResourceStop', function(resource)
     if resource ~= GetCurrentResourceName() then return end
     for key in pairs(testDefenders) do despawnTest(key) end
     if stashBlip then RemoveBlip(stashBlip) end
+    clearObjectiveBlips()
 end)
 
 RegisterNetEvent('QBCore:Client:OnPlayerUnload', function()
-    warState, stashWindow = nil, nil
+    warState, stashWindow, lastLeader = nil, nil, nil
     if stashBlip then RemoveBlip(stashBlip) stashBlip = nil end
+    clearObjectiveBlips()
+    SendNUIMessage({ action = 'warHud', data = nil })
 end)
 
 RegisterNetEvent('QBCore:Client:OnPlayerLoaded', function()
     local res = lib.callback.await('XS-CriminalTablet:war:getState', false)
     if res then
-        warState = res.war
+        TriggerEvent('XS-CriminalTablet:client:sync', 'war', res.war)
         if res.stash then TriggerEvent('XS-CriminalTablet:client:sync', 'stash', res.stash) end
     end
 end)

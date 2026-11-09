@@ -6,6 +6,11 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
     <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
     <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="builder.css" />
+    <link rel="stylesheet" href="admin.css" />
+    <link rel="stylesheet" href="radial.css" />
+    <link rel="stylesheet" href="craft.css" />
+    <link rel="stylesheet" href="warhud.css" />
     <title>XS-CriminalTablet</title>
 </head>
 <body>
@@ -15,49 +20,40 @@
      ══════════════════════════════════════════════════════════ -->
 <div id="root" class="hidden">
     <div class="device">
-        <div class="device-bezel"></div>
-        <div class="device-corner tl"></div>
-        <div class="device-corner tr"></div>
-        <div class="device-corner bl"></div>
-        <div class="device-corner br"></div>
+        <div class="device-lightbar"></div>
 
-        <div id="bootScreen" class="boot-screen">
-            <div class="boot-inner">
-                <div class="boot-mark"><i class="fas fa-satellite-dish"></i></div>
-                <div id="bootLines" class="boot-lines"></div>
-            </div>
-        </div>
-
-        <!-- ── App rail ── -->
-        <aside class="rail">
-            <div class="rail-crest">
+        <header class="statusbar">
+            <div class="brand">
                 <div id="railCrest" class="crest">—</div>
-                <div class="crest-meta">
-                    <span id="railGang" class="crest-name">No crew</span>
-                    <span id="railRank" class="crest-rank">—</span>
+                <div class="brand-word">
+                    <b id="railGang">No crew</b>
+                    <small>XS-CriminalTablet</small>
                 </div>
             </div>
-            <nav id="appRail" class="rail-apps"></nav>
-            <div class="rail-foot">
-                <button id="powerBtn" class="rail-power" title="Close"><i class="fas fa-power-off"></i><span>Close</span></button>
+            <div class="status-chips">
+                <span id="gangTier" class="chip chip-tier hidden">—</span>
+                <span id="gangLevelChip" class="chip chip-level hidden">LV 1</span>
+                <span id="testModeChip" class="chip chip-test hidden"><i class="fas fa-flask"></i> Test mode</span>
+                <span id="warChip" class="chip chip-war hidden"><i class="fas fa-crosshairs"></i> <span id="warChipText">War</span></span>
             </div>
-        </aside>
+            <span class="status-sp"></span>
+            <div id="kpiBankBox" class="kpi hidden"><span>Treasury</span><b id="kpiBank">$0</b></div>
+            <div id="kpiOnlineBox" class="kpi hidden"><span>Online</span><b id="kpiOnline">0</b></div>
+            <div class="rail-me">
+                <div id="railMeAvatar" class="me-avatar">—</div>
+                <div class="me-meta">
+                    <b id="railMe">—</b>
+                    <small id="railRank">—</small>
+                </div>
+            </div>
+            <span id="clock" class="clock">--:--</span>
+            <button id="powerBtn" class="close-btn" title="Close"><i class="fas fa-xmark"></i></button>
+        </header>
 
-        <!-- ── App surface ── -->
+        <nav id="appRail" class="rail-apps"></nav>
+
+        <div class="device-body">
         <main class="surface">
-            <header class="statusbar">
-                <div class="status-left">
-                    <span id="gangName" class="gang-name">No affiliation</span>
-                    <span id="gangTier" class="chip chip-tier">—</span>
-                    <span id="gangLevelChip" class="chip chip-level">LV 1</span>
-                </div>
-                <div class="status-right">
-                    <span id="testModeChip" class="chip chip-test hidden"><i class="fas fa-flask"></i> TEST MODE</span>
-                    <span id="warChip" class="chip chip-war hidden"><i class="fas fa-crosshairs"></i> <span id="warChipText">WAR</span></span>
-                    <span class="signal"><i class="fas fa-lock"></i> SECURE</span>
-                    <span id="clock" class="clock">--:--</span>
-                </div>
-            </header>
 
             <!-- ══ LOCKED (no gang) ══ -->
             <section id="viewLocked" class="view hidden">
@@ -148,6 +144,7 @@
                             <span><i class="dot dot-hq"></i> HQ</span>
                             <span><i class="dot dot-turf"></i> Your turf</span>
                             <span><i class="dot dot-rival"></i> Rival turf</span>
+                            <span id="legendDoc" class="hidden"><i class="dot dot-doc"></i> Street doc</span>
                         </div>
                     </div>
                     <div class="row-between">
@@ -180,6 +177,7 @@
                 <nav class="tabs">
                     <button class="tab is-active" data-tab="ros-members">Members</button>
                     <button class="tab" data-tab="ros-ranks">Ranks &amp; Permissions</button>
+                    <button class="tab" data-tab="ros-logo">Logo</button>
                 </nav>
 
                 <div class="tabview is-active" data-tabview="ros-members">
@@ -211,6 +209,10 @@
                     <div class="danger-row">
                         <button id="leaveGangBtn" class="btn btn-danger btn-sm"><i class="fas fa-door-open"></i> Leave crew</button>
                     </div>
+                </div>
+
+                <div class="tabview" data-tabview="ros-logo">
+                    <div id="crewLogoRoot"></div>
                 </div>
 
                 <div class="tabview" data-tabview="ros-ranks">
@@ -248,6 +250,7 @@
 
             <!-- ══ WAR ROOM ══ -->
             <section id="viewWar" class="view hidden">
+                <div id="warRequests" class="war-reqs hidden"></div>
                 <div id="stashBanner" class="stash-banner hidden"></div>
                 <div id="warActive" class="war-active hidden"></div>
 
@@ -358,6 +361,7 @@
                     <button class="tab" data-tab="gf-text">Text</button>
                     <button class="tab" data-tab="gf-draw">Freehand</button>
                     <button class="tab" data-tab="gf-tags">Our Tags</button>
+                    <button class="tab" data-tab="gf-photos">Own Photos</button>
                 </nav>
 
                 <div class="tabview is-active" data-tabview="gf-library">
@@ -461,6 +465,10 @@
                     </div>
                 </div>
 
+                <div class="tabview" data-tabview="gf-photos">
+                    <div id="tagPhotosRoot"></div>
+                </div>
+
                 <div class="tabview" data-tabview="gf-tags">
                     <div class="row-between">
                         <h2 class="section-head"><span>Tags up right now</span><span id="tagCount" class="count">0</span></h2>
@@ -498,6 +506,7 @@
                     <p class="hint"><i class="fas fa-circle-info"></i> No forced dues — anyone can put money in. Taking it out needs the treasury permission.</p>
 
 
+                    <p id="lockerNote" class="hint hidden"></p>
                     <h2 class="section-head"><span>Transaction ledger</span></h2>
                     <div id="bankLedger" class="ledger-list"></div>
                 </div>
@@ -573,7 +582,13 @@
                     </div>
                 </div>
             </section>
+
+            <!-- ══ RIVALS ══ -->
+            <section id="viewRivals" class="view hidden">
+                <div id="rivalsRoot"></div>
+            </section>
         </main>
+        </div>
 
         <div id="toastStack" class="toast-stack"></div>
 
@@ -593,85 +608,75 @@
 <!-- ══════════════════════════════════════════════════════════
      FIELD RADIAL
      ══════════════════════════════════════════════════════════ -->
-<div id="radialRoot" class="hidden">
-    <div class="radial-scrim"></div>
-    <div class="radial">
-        <svg id="radialSvg" viewBox="0 0 400 400"></svg>
-        <div class="radial-hub">
-            <span id="radialHubLabel" class="radial-hub-label">FIELD</span>
-            <span id="radialHubSub" class="radial-hub-sub">—</span>
-        </div>
-    </div>
-</div>
+<div id="radialRoot" class="hidden"></div>
+
+<div id="warHud" class="hidden"></div>
 
 <!-- ══════════════════════════════════════════════════════════
      ADMIN TABLET
      ══════════════════════════════════════════════════════════ -->
 <div id="adminRoot" class="hidden">
-    <div class="device admin-device">
-        <div class="device-bezel"></div>
-        <div class="device-corner tl"></div>
-        <div class="device-corner tr"></div>
-        <div class="device-corner bl"></div>
-        <div class="device-corner br"></div>
-
-        <div id="adminBootScreen" class="boot-screen admin-boot">
-            <div class="boot-inner">
-                <div class="boot-mark boot-mark-admin"><i class="fas fa-shield-halved"></i></div>
-                <div id="adminBootLines" class="boot-lines admin-boot-lines"></div>
+    <div class="bx">
+        <div class="bx-lightbar"></div>
+        <header class="bx-top">
+            <div class="bx-logo">
+                <div class="bx-badge"><i class="fas fa-tablet-screen-button"></i></div>
+                <div class="bx-word"><b>XS-<span>CriminalTablet</span></b><small>Builder</small></div>
             </div>
-        </div>
-
-        <aside class="rail admin-rail">
-            <div class="rail-crest">
-                <div class="crest crest-admin">XS</div>
-                <div class="crest-meta">
-                    <span class="crest-name">Staff Console</span>
-                    <span class="crest-rank">Full access</span>
-                </div>
+            <button id="bxSearch" class="bx-search">
+                <i class="fas fa-magnifying-glass"></i>
+                <span class="bx-stext">Search crews, turf, settings and actions</span>
+                <span class="bx-kbd">Ctrl</span><span class="bx-kbd">K</span>
+            </button>
+            <span class="bx-sp"></span>
+            <div class="bx-sys">
+                <span id="bxPillCrews" class="bx-pill"><i></i><span>0 crews</span></span>
+                <span id="bxPillWars" class="bx-pill off"><i></i><span>No wars</span></span>
             </div>
-            <nav class="rail-apps" id="adminRail">
-                <div class="rail-group">
-                    <div class="rail-group-head"><span>Overview</span></div>
-                    <button class="rail-app is-active" data-tab="admin-dashboard"><span class="rail-tile"><i class="fas fa-gauge-high"></i></span><span class="rail-label">Dashboard</span></button>
-                    <button class="rail-app" data-tab="admin-setup"><span class="rail-tile"><i class="fas fa-wand-magic-sparkles"></i></span><span class="rail-label">New Crew</span></button>
-                </div>
-                <div class="rail-group">
-                    <div class="rail-group-head"><span>Crews</span></div>
-                    <button class="rail-app" data-tab="admin-gangs"><span class="rail-tile"><i class="fas fa-users-gear"></i></span><span class="rail-label">Gangs</span></button>
-                    <button class="rail-app" data-tab="admin-zones"><span class="rail-tile"><i class="fas fa-draw-polygon"></i></span><span class="rail-label">Turf</span></button>
-                    <button class="rail-app" data-tab="admin-pricing"><span class="rail-tile"><i class="fas fa-tags"></i></span><span class="rail-label">Pricing</span></button>
-                    <button class="rail-app" data-tab="admin-blips"><span class="rail-tile"><i class="fas fa-location-dot"></i></span><span class="rail-label">Blips</span></button>
-                </div>
-                <div class="rail-group">
-                    <div class="rail-group-head"><span>Content</span></div>
-                    <button class="rail-app" data-tab="admin-graffiti"><span class="rail-tile"><i class="fas fa-spray-can"></i></span><span class="rail-label">Graffiti</span></button>
-                    <button class="rail-app" data-tab="admin-dealer"><span class="rail-tile"><i class="fas fa-handshake"></i></span><span class="rail-label">Dealer</span></button>
-                    <button class="rail-app" data-tab="admin-dealer-setup"><span class="rail-tile"><i class="fas fa-sliders"></i></span><span class="rail-label">Dealer Setup</span></button>
-                </div>
-                <div class="rail-group">
-                    <div class="rail-group-head"><span>Live</span></div>
-                    <button class="rail-app" data-tab="admin-war"><span class="rail-tile"><i class="fas fa-crosshairs"></i></span><span class="rail-label">War</span></button>
-                    <button class="rail-app" data-tab="admin-blackmarket"><span class="rail-tile"><i class="fas fa-comments"></i></span><span class="rail-label">Chat</span></button>
-                    <button class="rail-app" data-tab="admin-test"><span class="rail-tile"><i class="fas fa-flask"></i></span><span class="rail-label">Test Mode</span></button>
+            <span id="adminClock" class="bx-clock">--:--</span>
+            <button id="adminCloseBtn" class="bx-iconbtn close" title="Close"><i class="fas fa-xmark"></i></button>
+        </header>
+
+        <div class="bx-body">
+            <nav id="adminRail" class="bx-nav">
+                <div class="bx-navgroup">Build</div>
+                <button class="bx-navitem on" data-tab="admin-dashboard" data-title="Overview" data-desc="Every crew, every block and what is live right now."><i class="fas fa-table-cells-large"></i><span class="bx-navlabel">Overview</span></button>
+                <button class="bx-navitem" data-tab="admin-gangs" data-title="Crews" data-desc="Make crews, set the boss, add members and run each crew's ranks."><i class="fas fa-users-gear"></i><span class="bx-navlabel">Crews</span><span id="bxCountCrews" class="bx-count">0</span></button>
+                <button class="bx-navitem" data-tab="admin-zones" data-title="Turf" data-desc="Draw blocks on the map or walk them in-world. Every block belongs to a crew."><i class="fas fa-draw-polygon"></i><span class="bx-navlabel">Turf</span><span id="bxCountTurf" class="bx-count">0</span></button>
+                <button class="bx-navitem" data-tab="admin-jobs" data-title="Jobs" data-desc="The jobs on the contracts board. Edit the ones from config.lua or make your own, and walk out where they happen."><i class="fas fa-briefcase"></i><span class="bx-navlabel">Jobs</span><span id="bxCountJobs" class="bx-count">0</span></button>
+                <button class="bx-navitem" data-tab="admin-blips" data-title="Blips" data-desc="Map markers for crews: lockups, hangouts, anything you want on the map."><i class="fas fa-location-dot"></i><span class="bx-navlabel">Blips</span></button>
+
+                <div class="bx-navgroup">Streets</div>
+                <button class="bx-navitem" data-tab="admin-approvals" data-title="Approvals" data-desc="Logos and tag photos crews have sent in. Nothing shows in the game until you approve it."><i class="fas fa-image"></i><span class="bx-navlabel">Approvals</span><span id="bxCountApprovals" class="bx-count warn hidden">0</span></button>
+                <button class="bx-navitem" data-tab="admin-graffiti" data-title="Graffiti" data-desc="The art crews can spray, and every tag on a wall right now."><i class="fas fa-spray-can"></i><span class="bx-navlabel">Graffiti</span></button>
+                <button class="bx-navitem" data-tab="admin-dealer" data-title="Dealer" data-desc="What the dealer has on him right now."><i class="fas fa-handshake"></i><span class="bx-navlabel">Dealer</span></button>
+                <button class="bx-navitem" data-tab="admin-dealer-setup" data-title="Dealer setup" data-desc="What he can stock, where he stands and how often he moves."><i class="fas fa-sliders"></i><span class="bx-navlabel">Dealer setup</span></button>
+                <button class="bx-navitem" data-tab="admin-doc" data-title="Street doc" data-desc="Where the one street doc stands. Crews buy access to him."><i class="fas fa-user-doctor"></i><span class="bx-navlabel">Street doc</span></button>
+                <button class="bx-navitem" data-tab="admin-content" data-title="Crafting and perks" data-desc="What crews can make at their benches, the perk tree they spend points on and the upgrades they buy with the treasury."><i class="fas fa-screwdriver-wrench"></i><span class="bx-navlabel">Crafting and perks</span></button>
+                <button class="bx-navitem" data-tab="admin-pricing" data-title="Prices" data-desc="What every unlock and upgrade costs a crew."><i class="fas fa-tags"></i><span class="bx-navlabel">Prices</span></button>
+
+                <div class="bx-navgroup">Live</div>
+                <button class="bx-navitem" data-tab="admin-war" data-title="Wars" data-desc="Raids and wars going on right now."><i class="fas fa-crosshairs"></i><span class="bx-navlabel">Wars</span><span id="bxCountWars" class="bx-count warn hidden">0</span></button>
+                <button class="bx-navitem" data-tab="admin-blackmarket" data-title="Blackmarket" data-desc="The anonymous world chat. Remove anything that crosses the line."><i class="fas fa-comments"></i><span class="bx-navlabel">Blackmarket</span></button>
+                <button class="bx-navitem" data-tab="admin-test" data-title="Test mode" data-desc="Try captures and raids without a rival crew online."><i class="fas fa-flask"></i><span class="bx-navlabel">Test mode</span></button>
+
+                <div class="bx-navgroup">System</div>
+                <button class="bx-navitem" data-tab="admin-radial" data-title="Radial" data-desc="The F6 wheel crews use in the street. Pick what is on it, rename it and drag it into order."><i class="fas fa-circle-dot"></i><span class="bx-navlabel">Radial</span></button>
+                <button class="bx-navitem" data-tab="admin-settings" data-title="Settings" data-desc="How the whole tablet behaves. Saving puts it live for everyone straight away. Anything you change here wins over config.lua."><i class="fas fa-gear"></i><span class="bx-navlabel">Settings</span><span id="bxCountSettings" class="bx-count warn hidden">0</span></button>
+
+                <div class="bx-me">
+                    <div id="bxMeAvatar" class="bx-avatar">XS</div>
+                    <div><b id="bxMe">Staff</b><small>Builder access</small></div>
                 </div>
             </nav>
-            <div class="rail-foot">
-                <button id="adminCloseBtn" class="rail-power" title="Close"><i class="fas fa-power-off"></i><span>Close</span></button>
-            </div>
-        </aside>
 
-        <main class="surface admin-surface">
-            <header class="statusbar">
-                <div class="status-left">
-                    <span class="gang-name">Gang Control</span>
-                    <span class="chip chip-danger">STAFF ACCESS</span>
-                </div>
-                <div class="status-right">
-                    <span class="signal admin-signal"><i class="fas fa-shield-halved"></i> ELEVATED</span>
-                    <span id="adminClock" class="clock">--:--</span>
-                </div>
-            </header>
+            <main class="bx-main">
+                <div id="adminPage" class="bx-page bx-scroll admin-surface">
+                    <div id="adminPageHead" class="bx-pagehead">
+                        <div><h1>Overview</h1><p>Every crew, every block and what is live right now.</p></div>
+                        <span class="bx-sp"></span>
+                        <div id="adminPageActs" class="bx-pageacts"></div>
+                    </div>
 
             <!-- DASHBOARD -->
             <div class="tabview is-active" data-tabview="admin-dashboard">
@@ -683,6 +688,29 @@
             </div>
 
             <!-- DEALER SETUP -->
+            <div class="tabview" data-tabview="admin-doc">
+                <section class="admin-card">
+                    <div class="row-between">
+                        <h2 class="section-head"><span>Where he stands</span></h2>
+                        <span id="docNote" class="muted"></span>
+                    </div>
+                    <p class="hint"><i class="fas fa-circle-info"></i> One doctor every crew shares. Only crews that bought the Street Doc unlock see him in the world and on their Live Map. Prices and timings are in Settings → Street doc.</p>
+                    <div class="inline-form">
+                        <button id="docHere" class="btn btn-ghost btn-sm"><i class="fas fa-location-crosshairs"></i> Where I'm stood</button>
+                        <button id="docArm" class="btn btn-accent btn-sm"><i class="fas fa-crosshairs"></i> Drop on map</button>
+                        <button id="docReset" class="btn btn-ghost btn-sm"><i class="fas fa-rotate-left"></i> Back to config.lua</button>
+                    </div>
+                    <div class="map-wrap">
+                        <div id="docMap" class="map map-tall"></div>
+                        <div id="docMapHint" class="map-hint hidden">Click where he should stand.</div>
+                    </div>
+                </section>
+                <section class="admin-card">
+                    <h2 class="section-head"><span>Crews with access</span></h2>
+                    <div id="docCrews" class="tile-list"></div>
+                </section>
+            </div>
+
             <div class="tabview" data-tabview="admin-dealer-setup">
                 <section class="admin-card">
                     <div class="row-between">
@@ -691,8 +719,8 @@
                     </div>
                     <p class="hint"><i class="fas fa-circle-info"></i> What the dealer can be carrying. Each call picks a random handful from this list and rolls a price between the two numbers.</p>
                     <div class="form-grid">
-                        <label class="field"><span>Item name</span>
-                            <input id="dlItem" type="text" placeholder="weapon_pistol" /></label>
+                        <label class="field"><span>Item</span>
+                            <input id="dlItem" type="text" placeholder="Search your items" /></label>
                         <label class="field"><span>Label</span>
                             <input id="dlLabel" type="text" placeholder="Pistol" /></label>
                         <label class="field"><span>Price from</span>
@@ -911,7 +939,7 @@
                                 <input id="newGangName" type="text" placeholder="ballas" />
                             </label>
                             <label class="field field-wide">
-                                <span>Boss citizenid <em>(optional)</em></span>
+                                <span>Boss <em>(optional)</em></span>
                                 <input id="newGangBoss" type="text" placeholder="ABC12345" />
                             </label>
                             <label class="field">
@@ -1114,8 +1142,36 @@
                     <div id="dealerStockList" class="admin-gang-list"></div>
                 </section>
             </div>
-        </main>
+
+            <!-- APPROVALS -->
+            <div class="tabview" data-tabview="admin-approvals">
+                <div id="baRoot"></div>
+            </div>
+
+            <!-- CRAFTING AND PERKS -->
+            <div class="tabview" data-tabview="admin-content">
+                <div id="bcRoot"></div>
+            </div>
+
+            <!-- JOBS -->
+            <div class="tabview" data-tabview="admin-jobs">
+                <div id="bjRoot"></div>
+            </div>
+
+            <!-- RADIAL -->
+            <div class="tabview" data-tabview="admin-radial">
+                <div id="brRoot"></div>
+            </div>
+
+            <!-- SETTINGS -->
+            <div class="tabview" data-tabview="admin-settings">
+                <div id="bsRoot"></div>
+            </div>
+                </div>
+            </main>
+        </div>
         <div id="adminToastStack" class="toast-stack"></div>
+        <div id="bxOverlay"></div>
     </div>
 </div>
 
@@ -1123,51 +1179,47 @@
      CRAFTING BENCH OVERLAY
      ══════════════════════════════════════════════════════════ -->
 <div id="craftRoot" class="hidden">
-    <div class="craft-frame">
-        <div class="craft-corner tl"></div>
-        <div class="craft-corner tr"></div>
-        <div class="craft-corner bl"></div>
-        <div class="craft-corner br"></div>
-
-        <header class="craft-header">
-            <span class="craft-title" id="craftBenchLabel">WORKBENCH</span>
-            <button id="craftCloseBtn" class="craft-close" title="Close">✕</button>
-        </header>
-
-        <div class="craft-body">
-            <div id="craftRecipeList" class="craft-recipe-list"></div>
-            <div class="craft-detail">
-                <div id="craftEmpty" class="craft-empty">Select a recipe</div>
-                <div id="craftSelected" class="craft-selected hidden">
-                    <div class="craft-selected-title" id="craftSelTitle">—</div>
-                    <div class="craft-io">
-                        <div class="craft-io-col">
-                            <span class="craft-io-label">Requires</span>
-                            <div id="craftInputs" class="craft-chips"></div>
-                        </div>
-                        <div class="craft-io-arrow">→</div>
-                        <div class="craft-io-col">
-                            <span class="craft-io-label">Produces</span>
-                            <div id="craftOutput" class="craft-chips"></div>
-                        </div>
-                    </div>
-                    <button id="craftMakeBtn" class="craft-make-btn">
-                        <svg class="craft-ring" viewBox="0 0 100 100">
-                            <circle class="craft-ring-bg" cx="50" cy="50" r="44"></circle>
-                            <circle id="craftRingFill" class="craft-ring-fill" cx="50" cy="50" r="44"></circle>
-                        </svg>
-                        <span id="craftMakeLabel" class="craft-make-label">CRAFT</span>
-                    </button>
-                </div>
+    <div class="bp">
+        <header class="bp-head">
+            <div class="bp-crest" id="craftCrest"></div>
+            <div class="bp-title">
+                <span class="bp-kicker">XS-CriminalTablet · Workshop drawings</span>
+                <h1 id="craftBenchLabel">Crafting Bench</h1>
             </div>
+            <div class="bp-perks" id="craftPerks"></div>
+            <button id="craftCloseBtn" class="bp-close" title="Close (Esc)"><i class="fas fa-xmark"></i></button>
+        </header>
+        <div class="bp-body">
+            <aside class="bp-index">
+                <div class="bp-label"><span>Parts index</span><span id="craftCount"></span></div>
+                <div id="craftRecipeList" class="bp-list"></div>
+            </aside>
+            <main id="craftDetail" class="bp-draw"></main>
         </div>
+        <footer class="bp-block">
+            <div><small>Crew</small><b id="craftCrew">—</b></div>
+            <div><small>Bench</small><b id="craftBenchName">—</b></div>
+            <div><small>Sheet</small><b id="craftSheet">—</b></div>
+            <div><small>Drawn</small><b>XS-CriminalTablet</b></div>
+        </footer>
     </div>
 </div>
 
 <script src="vendor/leaflet/leaflet.js"></script>
 <script src="app.js"></script>
+<script src="radial.js"></script>
+<script src="warhud.js"></script>
+<script src="rivals.js"></script>
 <script src="graffiti.js"></script>
+<script src="uploads.js"></script>
+<script src="picker.js"></script>
 <script src="admin.js"></script>
+<script src="bsettings.js"></script>
+<script src="palette.js"></script>
+<script src="bradial.js"></script>
+<script src="bjobs.js"></script>
+<script src="bcontent.js"></script>
+<script src="bapprovals.js"></script>
 <script src="mapedit.js"></script>
 <script src="craft.js"></script>
 </body>

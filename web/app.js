@@ -116,17 +116,22 @@ const can = (perm) => !!(state.gang && state.gang.perms && state.gang.perms[perm
 
 // ── theme ──
 // The whole device re-themes to the gang's own colour.
+// Every shade is worked out here because the game's browser has no
+// color-mix(): --acc-rgb feeds the rgba() tints, --accent-2 is the colour
+// lifted enough to read as text on near-black, hi/lo shade the buttons.
 function applyTheme(hex) {
-    if (!hex || !/^#[0-9a-f]{6}$/i.test(hex)) hex = '#3d7dff';
-    const r = parseInt(hex.slice(1, 3), 16);
-    const g = parseInt(hex.slice(3, 5), 16);
-    const b = parseInt(hex.slice(5, 7), 16);
+    if (!hex || !/^#[0-9a-f]{6}$/i.test(hex)) hex = '#4d8bff';
+    const rgb = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+    const mix = (to, t) => '#' + rgb.map((c) => Math.round(c + (to - c) * t).toString(16).padStart(2, '0')).join('');
+    const luma = (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255;
     const root = document.documentElement;
     root.style.setProperty('--accent', hex);
-    root.style.setProperty('--accent-soft', `rgba(${r}, ${g}, ${b}, .14)`);
-    root.style.setProperty('--accent-line', `rgba(${r}, ${g}, ${b}, .34)`);
-    // Dark text on a light accent, light text on a dark one.
-    const luma = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    root.style.setProperty('--acc-rgb', rgb.join(','));
+    root.style.setProperty('--accent-2', mix(255, luma < 0.45 ? 0.55 : 0.35));
+    root.style.setProperty('--accent-hi', mix(255, 0.12));
+    root.style.setProperty('--accent-lo', mix(0, 0.22));
+    root.style.setProperty('--accent-soft', `rgba(${rgb.join(',')}, .14)`);
+    root.style.setProperty('--accent-line', `rgba(${rgb.join(',')}, .34)`);
     root.style.setProperty('--accent-ink', luma > 0.6 ? '#04060c' : '#ffffff');
 }
 
@@ -136,6 +141,7 @@ window.addEventListener('message', (ev) => {
     if (action === 'open') openUI(data, ev.data.app);
     else if (action === 'close') closeUI();
     else if (action === 'openAdmin' && window.openAdminUI) window.openAdminUI();
+    else if (action === 'jobPoints' && window.XS.BuilderJobs) window.XS.BuilderJobs.onPoints(data);
     else if (action === 'invite') showInvite(data);
     else if (action === 'refresh') refreshAll();
     else if (action === 'sync') onSync(ev.data.event, data);
@@ -201,38 +207,18 @@ function onSync(event, data) {
         case 'log':
             refreshSnapshotQuiet();
             break;
+        case 'warRequest':
+            refreshSnapshotQuiet().then(() => {
+                updateRailBadges();
+                if (state.activeApp === 'war') renderWar();
+                else if (state.activeApp === 'hub' && state.gang) renderHubAlerts(state.gang);
+            });
+            break;
+        case 'intel':
+            if (data && data.message) flash(data.message, 'error');
+            if (state.activeApp === 'rivals' && window.XS.Rivals) window.XS.Rivals.onIntel();
+            break;
     }
-}
-
-// ── boot ──
-const BOOT_LINES = [
-    'ESTABLISHING SECURE LINK...',
-    'DECRYPTING HANDSHAKE...',
-    'LOADING CREW MODULES <span class="ok">[OK]</span>',
-    'ACCESS GRANTED',
-];
-
-function playBootSequence(onDone) {
-    const screen = $('#bootScreen');
-    const linesEl = $('#bootLines');
-    if (!screen || !linesEl) { onDone && onDone(); return; }
-    linesEl.innerHTML = '';
-    screen.classList.remove('is-hidden');
-
-    let i = 0;
-    (function next() {
-        if (i >= BOOT_LINES.length) {
-            setTimeout(() => { screen.classList.add('is-hidden'); onDone && onDone(); }, 280);
-            return;
-        }
-        const div = document.createElement('div');
-        div.className = 'boot-line';
-        div.innerHTML = BOOT_LINES[i] + (i === BOOT_LINES.length - 1 ? '<span class="boot-cursor"></span>' : '');
-        linesEl.appendChild(div);
-        requestAnimationFrame(() => div.classList.add('is-shown'));
-        i++;
-        setTimeout(next, 200);
-    })();
 }
 
 // ── open / close ──
@@ -240,7 +226,6 @@ function openUI(snapshot, wantApp) {
     applySnapshot(snapshot);
     $('#root').classList.remove('hidden');
     tickClock();
-    playBootSequence();
 
     if (!state.gang) {
         $('#appRail').innerHTML = '';
@@ -316,14 +301,19 @@ function tickClock() {
 // ── statusbar ──
 function renderStatusbar() {
     const g = state.gang;
-    $('#gangName').textContent = g ? g.label : 'No affiliation';
+    const me = g && (g.members || []).find((m) => m.citizenid === g.myCitizenId);
     $('#gangTier').textContent = g ? g.tier : '—';
     $('#gangLevelChip').textContent = g ? `LV ${g.gangLevel}` : 'LV —';
-    $('#railCrest').textContent = g ? initials(g.label) : '—';
+    if (g && g.logo) $('#railCrest').innerHTML = `<img src="${escapeHtml(g.logo)}" alt="">`;
+    else $('#railCrest').textContent = g ? initials(g.label) : '—';
+    $('#railCrest').classList.toggle('has-logo', !!(g && g.logo));
     $('#railGang').textContent = g ? g.label : 'No crew';
     $('#railRank').textContent = g ? g.myRank : '—';
-    $('#gangTier').classList.toggle('hidden', !g);
-    $('#gangLevelChip').classList.toggle('hidden', !g);
+    $('#railMe').textContent = me ? me.name : (g ? 'Crew member' : 'Not in a crew');
+    $('#railMeAvatar').textContent = me ? initials(me.name) : '—';
+    $('#kpiBank').textContent = g ? money(g.bank) : '$0';
+    $('#kpiOnline').innerHTML = g ? `${num(g.onlineCount)}<em>/${num(g.memberCount)}</em>` : '0';
+    ['#gangTier', '#gangLevelChip', '#kpiBankBox', '#kpiOnlineBox'].forEach((s) => $(s).classList.toggle('hidden', !g));
 }
 
 function renderWarChip() {
@@ -348,9 +338,11 @@ function railBadge(appId) {
     const g = state.gang;
     if (!g) return null;
     switch (appId) {
-        case 'war':
-            if (!state.war) return null;
-            return { text: state.war.phase === 'prep' ? 'PREP' : 'LIVE', kind: 'hot' };
+        case 'war': {
+            if (state.war) return { text: state.war.phase === 'prep' ? 'PREP' : 'LIVE', kind: 'hot' };
+            const asked = state.snapshot && state.snapshot.warRequests && state.snapshot.warRequests.incoming;
+            return asked && asked.length ? { text: 'ASK', kind: 'hot' } : null;
+        }
         case 'roster':
             return g.onlineCount ? { text: String(g.onlineCount), kind: 'dim' } : null;
         case 'treasury':
@@ -432,6 +424,7 @@ const VIEW_BY_APP = {
     treasury: 'viewTreasury',
     standing: 'viewStanding',
     blackmarket: 'viewBlackmarket',
+    rivals: 'viewRivals',
 };
 
 function showView(id) {
@@ -460,6 +453,7 @@ function renderActiveApp() {
         case 'treasury': renderTreasury(); break;
         case 'standing': renderStanding(); break;
         case 'blackmarket': renderBlackmarket(); break;
+        case 'rivals': if (window.XS.Rivals) window.XS.Rivals.render(); break;
     }
 }
 
@@ -562,6 +556,16 @@ function renderHubAlerts(g) {
                 : (prep ? 'War starts soon' : 'War is live'),
             body: prep ? 'Get everyone on before it opens.' : 'Your crew is in it right now.',
             cta: 'War Room', app: 'war',
+        });
+    }
+
+    const asked = (state.snapshot && state.snapshot.warRequests && state.snapshot.warRequests.incoming) || [];
+    if (!state.war && asked.length) {
+        alerts.push({
+            kind: 'hot', icon: 'fa-skull',
+            title: asked.length === 1 ? `${asked[0].attackerLabel} want a war` : `${asked.length} crews want a war`,
+            body: 'Nothing happens unless your crew accepts.',
+            cta: 'Answer', app: 'war',
         });
     }
 
@@ -819,9 +823,12 @@ function renderFilteredLogs() {
 
 // ── unlocks / property ──
 const KIND_ICONS = {
-    hq: 'fa-satellite-dish', vault: 'fa-vault', safe: 'fa-sack-dollar',
-    garage: 'fa-warehouse', medic: 'fa-kit-medical', bench: 'fa-screwdriver-wrench',
-    task: 'fa-box', prop: 'fa-cube',
+    hq: 'fa-satellite-dish', vault: 'fa-box-open',
+    garage: 'fa-warehouse', medic: 'fa-user-doctor', bench: 'fa-screwdriver-wrench',
+    task: 'fa-file-signature', prop: 'fa-cube',
+};
+const KIND_NAMES = {
+    hq: 'Home', vault: 'Storage', garage: 'Garage', medic: 'Doctor', bench: 'Crafting', task: 'Contracts', prop: 'Prop',
 };
 
 async function renderUnlocks() {
@@ -850,10 +857,11 @@ async function renderUnlocks() {
                 <span class="unlock-icon"><i class="fas ${KIND_ICONS[u.kind] || 'fa-cube'}"></i></span>
                 <div>
                     <div class="unlock-name">${escapeHtml(u.label)}</div>
-                    <div class="unlock-kind">${escapeHtml(u.kind)}${u.placed ? ' · placed' : (u.owned ? ' · owned' : '')}</div>
+                    <div class="unlock-kind">${escapeHtml(KIND_NAMES[u.kind] || u.kind)}${u.placed ? ' · placed' : (u.owned ? (u.placeable === false ? ' · active' : ' · owned') : '')}</div>
                 </div>
                 ${u.price > 0 && !u.owned ? `<span class="unlock-price">${money(u.price)}</span>` : ''}
             </div>
+            ${u.note ? `<div class="unlock-note">${escapeHtml(u.note)}</div>` : ''}
             ${u.locked ? `<div class="unlock-req">Needs ${escapeHtml(u.tierName)} · ${num(u.tierRep)} rep</div>` : ''}
             ${needsBuying && !u.locked && !u.affordable ? '<div class="unlock-req">The bank is short</div>' : ''}
             <div class="unlock-actions">
@@ -861,7 +869,9 @@ async function renderUnlocks() {
                     <button class="btn btn-accent btn-sm" data-buy="${escapeHtml(u.id)}"
                         ${!data.canBuy || !u.affordable || u.locked ? 'disabled' : ''}>
                         <i class="fas fa-cart-shopping"></i> Buy
-                    </button>` : `
+                    </button>` : u.placeable === false ? `
+                    <span class="unlock-active"><i class="fas fa-circle-check"></i> Active${u.locked ? ' once you are back at this tier' : ''}</span>
+                    ${u.where ? `<button class="btn btn-ghost btn-sm" data-docwp="${escapeHtml(u.id)}" title="Set waypoint"><i class="fas fa-map-pin"></i> Find him</button>` : ''}` : `
                     <button class="btn btn-accent btn-sm" data-place="${escapeHtml(u.id)}"
                         ${u.locked || !data.canPlace ? 'disabled' : ''}>
                         <i class="fas fa-location-dot"></i> ${u.placed ? 'Move' : 'Place'}
@@ -880,10 +890,18 @@ async function renderUnlocks() {
     grid.querySelectorAll('[data-buy]').forEach((b) => {
         b.onclick = async () => {
             const res = await call('XS-CriminalTablet:placeables:buy', b.dataset.buy);
-            if (report(res, 'Unlocked — you can place it now.')) {
+            const bought = list.find((x) => x.id === b.dataset.buy);
+            if (report(res, bought && bought.kind === 'medic' ? 'Unlocked. The street doc is on your Live Map.'
+                : bought && bought.placeable === false ? 'Unlocked. It is working now.' : 'Unlocked — you can place it now.')) {
                 renderUnlocks();
                 refreshSnapshotQuiet();
             }
+        };
+    });
+    grid.querySelectorAll('[data-docwp]').forEach((b) => {
+        b.onclick = () => {
+            const u = list.find((x) => x.id === b.dataset.docwp);
+            if (u && u.where) { nui('setWaypoint', { x: u.where.x, y: u.where.y }); flash('Waypoint set to the street doc.', 'success'); }
         };
     });
     grid.querySelectorAll('[data-remove]').forEach((b) => {
@@ -916,6 +934,15 @@ async function renderLiveMap() {
             L.circleMarker(mapLatLng(_liveMap, data.hq.x, data.hq.y), {
                 radius: 7, color: '#ffffff', weight: 2, fillColor: '#ffffff', fillOpacity: .9,
             }).bindTooltip('Crew HQ', { direction: 'top' }).addTo(_liveLayer);
+        }
+
+        $('#legendDoc').classList.toggle('hidden', !(data && data.doc));
+        if (data && data.doc) {
+            L.marker(mapLatLng(_liveMap, data.doc.x, data.doc.y), {
+                icon: L.divIcon({ className: 'map-doc', html: '<i class="fas fa-kit-medical"></i>', iconSize: [26, 26], iconAnchor: [13, 13] }),
+            }).bindTooltip(`${escapeHtml(data.doc.label || 'Street Doc')} · click for a waypoint`, { direction: 'top' })
+              .on('click', () => { nui('setWaypoint', { x: data.doc.x, y: data.doc.y }); flash('Waypoint set to the street doc.', 'success'); })
+              .addTo(_liveLayer);
         }
 
         members.forEach((m) => {
@@ -1095,9 +1122,10 @@ function plotZone(map, layer, t) {
     if (t.center || t.coords) {
         const c = t.center || t.coords;
         const top = (t.influence || [])[0];
-        L.tooltip({ permanent: true, direction: 'center', className: 'zone-label', interactive: false })
+        const logo = mine ? (state.gang && state.gang.logo) : t.holderLogo;
+        L.tooltip({ permanent: true, direction: 'center', className: 'zone-label' + (logo ? ' has-logo' : ''), interactive: false })
             .setLatLng(mapLatLng(map, c.x, c.y))
-            .setContent(`<span>${escapeHtml(t.label)}</span>` +
+            .setContent((logo ? `<img class="zone-logo" src="${escapeHtml(logo)}" alt="">` : '') + `<span>${escapeHtml(t.label)}</span>` +
                 (top ? `<em>${Math.round(top.influence)}%</em>` : ''))
             .addTo(layer);
     }
@@ -1441,16 +1469,17 @@ async function renderTurf() {
         const holderCls = mine ? 'mine' : 'held';
         const shapeColor = mine ? ((state.gang && state.gang.color) || '#f5a524')
             : (t.holderColor || '#e5484d');
+        const logo = mine ? (state.gang && state.gang.logo) : t.holderLogo;
         return `<div class="turf ${cls} rise" style="--i:${i}">
             <div class="turf-top">
                 <div class="turf-head">
-                    ${turfShape(t, shapeColor)}
+                    <div class="turf-mark">${turfShape(t, shapeColor)}${logo ? `<img class="turf-crest" src="${escapeHtml(logo)}" alt="">` : ''}</div>
                     <div>
                         <div class="turf-label">${escapeHtml(t.label)}</div>
                         <div class="turf-zone">${escapeHtml(t.zone)}${t.capturable ? '' : ' · locked'}</div>
                     </div>
                 </div>
-                <span class="turf-holder ${holderCls}">${escapeHtml(t.holder || '—')}</span>
+                <span class="turf-holder ${holderCls}">${logo ? `<img src="${escapeHtml(logo)}" alt="">` : ''}${escapeHtml(t.holder || '—')}</span>
             </div>
             ${influenceBar(t.influence, t.myInfluence)}
             <div class="turf-actions">
@@ -1479,7 +1508,7 @@ function influenceBar(shares, mine) {
         </div>
         <div class="influence-keys">
             ${shares.map((s) => `<span class="influence-key">
-                <i style="background:${escapeHtml(s.gangColor)}"></i>${escapeHtml(s.gangLabel)} ${s.influence}%
+                ${s.gangLogo ? `<img src="${escapeHtml(s.gangLogo)}" alt="" style="border-color:${escapeHtml(s.gangColor)}">` : `<i style="background:${escapeHtml(s.gangColor)}"></i>`}${escapeHtml(s.gangLabel)} ${s.influence}%
             </span>`).join('')}
             ${mine ? `<span class="influence-key mine">You ${mine}%</span>` : ''}
         </div>
@@ -1596,6 +1625,47 @@ async function renderWar() {
         activeEl.classList.add('hidden');
     }
 
+    // War requests: wars only start when the asked crew says yes.
+    const reqEl = $('#warRequests');
+    const reqs = data.requests || { incoming: [], outgoing: [] };
+    const incoming = reqs.incoming || [];
+    const outgoing = reqs.outgoing || [];
+    if (incoming.length || outgoing.length) {
+        reqEl.classList.remove('hidden');
+        reqEl.innerHTML = incoming.map((r) => `<div class="war-req in" style="--req:${escapeHtml(r.attackerColor || '#e5484d')}">
+                <span class="war-req-icon"><i class="fas fa-skull"></i></span>
+                <div class="war-req-main"><b><span style="color:${escapeHtml(r.attackerColor || '#fff')}">${escapeHtml(r.attackerLabel)}</span> want a war with you</b>
+                    <small>Asked by ${escapeHtml(r.byName)} · ${data.warMinutes} minutes, first to ${data.scoreToWin} ahead wins · answer within <span data-until="${r.expiresAt}">${countdown(r.expiresAt)}</span></small></div>
+                ${data.canAnswer ? `<button class="btn btn-ghost btn-sm" data-answer="${r.id}" data-yes="0">Turn down</button><button class="btn btn-danger btn-sm" data-answer="${r.id}" data-yes="1"><i class="fas fa-skull"></i> Accept</button>`
+                    : '<span class="muted">Your boss or a rank that can declare war answers this.</span>'}
+            </div>`).join('') + outgoing.map((r) => `<div class="war-req out">
+                <span class="war-req-icon"><i class="fas fa-hourglass-half"></i></span>
+                <div class="war-req-main"><b>Waiting on <span style="color:${escapeHtml(r.defenderColor || '#fff')}">${escapeHtml(r.defenderLabel)}</span> to answer</b>
+                    <small>Asked by ${escapeHtml(r.byName)} · runs out in <span data-until="${r.expiresAt}">${countdown(r.expiresAt)}</span> · nothing is charged unless they accept</small></div>
+                ${data.canDeclare ? '<button class="btn btn-ghost btn-sm" data-cancelreq>Take it back</button>' : ''}
+            </div>`).join('');
+        reqEl.querySelectorAll('[data-answer]').forEach((b) => {
+            b.onclick = async () => {
+                const yes = b.dataset.yes === '1';
+                const res = await call('XS-CriminalTablet:war:respond', Number(b.dataset.answer), yes);
+                if (report(res, yes ? 'War accepted. It is on.' : 'Turned down.')) renderWar();
+            };
+        });
+        const cancel = reqEl.querySelector('[data-cancelreq]');
+        if (cancel) cancel.onclick = async () => {
+            const res = await call('XS-CriminalTablet:war:cancelRequest');
+            if (report(res, 'Request taken back.')) renderWar();
+        };
+        clearInterval(reqEl._tick);
+        reqEl._tick = setInterval(() => {
+            if (reqEl.classList.contains('hidden') || state.activeApp !== 'war') { clearInterval(reqEl._tick); return; }
+            reqEl.querySelectorAll('[data-until]').forEach((s) => { s.textContent = countdown(Number(s.dataset.until)); });
+        }, 1000);
+    } else {
+        reqEl.classList.add('hidden');
+        reqEl.innerHTML = '';
+    }
+
     // Stash window
     const stashEl = $('#stashBanner');
     if (data.stash) {
@@ -1626,9 +1696,9 @@ async function renderWar() {
 
     // The single most useful thing to tell someone opening this tab is why
     // they can't do the thing they came here to do.
-    let hint = 'Raids hit a rival HQ for cash and turf. A war is longer and opens their safe if you win.';
+    let hint = 'Raids hit a rival HQ for cash and turf. A war only starts if the other crew accepts; it runs longer and opens their safe if you win.';
     if (!data.hasHq) hint = 'Place your Crew HQ first — you need one before anyone will take you seriously, and rivals need one to raid.';
-    else if (!data.hasSafe) hint = 'You have no Crew Safe placed, so there is nothing for a rival to loot if you lose a war. Placing one is opting into risk.';
+    else if (!data.hasLocker) hint = 'You have no Crew Locker placed, so a rival who beats you in a war has nothing to break into.';
     else if (data.raidCooldown > Date.now()) hint = `Your crew can raid again in ${countdown(data.raidCooldown)}.`;
     $('#warHint').textContent = hint;
 
@@ -1657,8 +1727,8 @@ async function renderWar() {
                         ${!data.canRaid || !r.hasHq || r.immune || data.active ? 'disabled' : ''}>
                         <i class="fas fa-fire"></i> Raid
                     </button>
-                    <button class="btn btn-danger btn-sm" data-declare="${r.id}"
-                        ${!data.canDeclare || data.active ? 'disabled' : ''}>
+                    <button class="btn btn-danger btn-sm" data-declare="${r.id}" title="Ask them for a war"
+                        ${!data.canDeclare || data.active || outgoing.length || incoming.some((q) => q.attackerId === r.id) ? 'disabled' : ''}>
                         <i class="fas fa-skull"></i> War
                     </button>
                 </div>
@@ -1673,7 +1743,7 @@ async function renderWar() {
         list.querySelectorAll('[data-declare]').forEach((b) => {
             b.onclick = async () => {
                 const res = await call('XS-CriminalTablet:war:declare', Number(b.dataset.declare));
-                if (report(res, 'War declared.')) renderWar();
+                if (report(res, `War request sent. They have ${data.requestMinutes} minutes to answer.`)) renderWar();
             };
         });
     }
@@ -1719,9 +1789,9 @@ async function renderContracts() {
 
     if (boardStatus) {
         contractCategories = boardStatus.categories || [];
-        $('#boardRotation').textContent = boardStatus.enabled && boardStatus.nextRotationAt
+        $('#boardRotation').textContent = (boardStatus.enabled && boardStatus.nextRotationAt
             ? `Rerolls in ${countdown(boardStatus.nextRotationAt)}`
-            : '';
+            : '') + (boardStatus.dropBonusPct ? ` · Crew Contracts: +${boardStatus.dropBonusPct}% on every job` : '');
         renderContractFilters();
     }
 
@@ -1972,6 +2042,14 @@ function renderTreasury() {
     $('#treasuryTier').textContent = g.tier;
     $('#treasuryRep').textContent = `${num(g.rep)} rep`;
     $('#withdrawBtn').disabled = !can('bank_withdraw');
+
+    const locker = state.snapshot && state.snapshot.locker;
+    const lockerEl = $('#lockerNote');
+    lockerEl.classList.toggle('hidden', !(locker && locker.cashPct > 0));
+    if (locker && locker.cashPct > 0) {
+        const take = Math.min(Math.floor(g.bank * locker.cashPct / 100), locker.cashMax || Infinity);
+        lockerEl.innerHTML = `<i class="fas fa-box-open"></i> Lose a war and the winner can break into your Crew Locker for ${locker.cashPct}% of the treasury (${money(take)} right now)${locker.itemStacks ? ` and ${locker.itemStacks} stacks from inside it` : ''}.`;
+    }
 
     renderLedger();
 }
@@ -2330,104 +2408,9 @@ function respondInvite(accept) {
 $('#inviteAccept').onclick = () => respondInvite(true);
 $('#inviteDecline').onclick = () => respondInvite(false);
 
-// ═══════════════════════════════════════════════════════════
-// FIELD RADIAL
-// A real wheel rather than a list — the slices are generated from
-// whatever actions actually make sense where the player is standing.
-// ═══════════════════════════════════════════════════════════
-const RADIAL_GLYPHS = {
-    'fa-spray-can': '', 'fa-warehouse': '', 'fa-kit-medical': '',
-    'fa-heart-pulse': '', 'fa-flag': '', 'fa-handcuffs': '',
-    'fa-mask': '', 'fa-car-rear': '', 'fa-people-carry-box': '',
-    'fa-person-walking': '', 'fa-user-lock': '', 'fa-hand': '',
-    'fa-screwdriver': '', 'fa-tablet-screen-button': '',
-};
-
-function openRadial(data) {
-    const root = $('#radialRoot');
-    const svg = $('#radialSvg');
-    const items = (data && data.items) || [];
-
-    applyTheme(data && data.color);
-    $('#radialHubLabel').textContent = 'FIELD';
-    $('#radialHubSub').textContent = (data && data.gang) || '';
-
-    if (!items.length) {
-        svg.innerHTML = '';
-        root.classList.remove('hidden');
-        return;
-    }
-
-    const cx = 200, cy = 200, rInner = 72, rOuter = 190;
-    const step = (Math.PI * 2) / items.length;
-    // Start at the top rather than at 3 o'clock — a wheel reads better
-    // when the first slice is where the eye lands.
-    const offset = -Math.PI / 2 - step / 2;
-
-    svg.innerHTML = items.map((item, i) => {
-        const a0 = offset + step * i;
-        const a1 = a0 + step;
-        const mid = a0 + step / 2;
-        const large = step > Math.PI ? 1 : 0;
-
-        const p = (r, a) => `${cx + r * Math.cos(a)} ${cy + r * Math.sin(a)}`;
-        const gap = 0.012; // hairline between slices
-        const path = [
-            `M ${p(rInner, a0 + gap)}`,
-            `L ${p(rOuter, a0 + gap)}`,
-            `A ${rOuter} ${rOuter} 0 ${large} 1 ${p(rOuter, a1 - gap)}`,
-            `L ${p(rInner, a1 - gap)}`,
-            `A ${rInner} ${rInner} 0 ${large} 0 ${p(rInner, a0 + gap)}`,
-            'Z',
-        ].join(' ');
-
-        const ir = rInner + (rOuter - rInner) * 0.38;
-        const tr = rInner + (rOuter - rInner) * 0.68;
-        const ix = cx + ir * Math.cos(mid), iy = cy + ir * Math.sin(mid);
-        const tx = cx + tr * Math.cos(mid), ty = cy + tr * Math.sin(mid);
-        const glyph = RADIAL_GLYPHS[item.icon] || '';
-
-        // Long labels get split rather than clipped.
-        const words = String(item.label).split(' ');
-        const lines = words.length > 1 && item.label.length > 10
-            ? [words.slice(0, Math.ceil(words.length / 2)).join(' '), words.slice(Math.ceil(words.length / 2)).join(' ')]
-            : [item.label];
-
-        return `<g class="radial-slice ${item.disabled ? 'disabled' : ''}" data-radial="${escapeHtml(item.id)}">
-            <path class="radial-slice-bg" d="${path}"></path>
-            <text class="radial-icon" x="${ix}" y="${iy}" style="font-family:'Font Awesome 6 Free';font-weight:900">${glyph}</text>
-            ${lines.map((ln, li) => `<text class="radial-text" x="${tx}" y="${ty + (li - (lines.length - 1) / 2) * 11}">${escapeHtml(ln)}</text>`).join('')}
-        </g>`;
-    }).join('');
-
-    svg.querySelectorAll('[data-radial]').forEach((g) => {
-        const item = items.find((x) => x.id === g.dataset.radial);
-        g.addEventListener('mouseenter', () => {
-            $('#radialHubLabel').textContent = item.label.toUpperCase();
-            $('#radialHubSub').textContent = item.note || '';
-        });
-        g.addEventListener('mouseleave', () => {
-            $('#radialHubLabel').textContent = 'FIELD';
-            $('#radialHubSub').textContent = (data && data.gang) || '';
-        });
-        if (item.disabled) return;
-        g.addEventListener('click', () => nui('radial:select', { id: item.id }));
-    });
-
-    root.classList.remove('hidden');
-}
-
-function closeRadial() {
-    $('#radialRoot').classList.add('hidden');
-}
-
-$('#radialRoot').addEventListener('click', (e) => {
-    if (e.target.classList.contains('radial-scrim')) nui('radial:close');
-});
-
 // Expose the few things graffiti.js and admin.js need.
 window.XS = {
     call, nui, flash, report, escapeHtml, money, num, initials, formatTime,
-    applyTheme, state, can, $, $$, statCard, statGrid,
+    applyTheme, state, can, $, $$, statCard, statGrid, tickClock,
     ensureMap, mapLatLng, mapWorld, plotZone, mapOf: (key) => _maps[key] || null,
 };

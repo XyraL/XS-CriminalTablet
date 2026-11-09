@@ -8,6 +8,8 @@
 -- with a `territory` set has a zone row to actually claim.
 CreateThread(function()
     Wait(3000)
+    local ok, err = pcall(Gangs.RepairCitizenIds)
+    if not ok then print('^1[XS-CriminalTablet]^0 citizenid repair skipped: ' .. tostring(err)) end
     Gangs.SyncFromConfig()
 end)
 
@@ -29,6 +31,7 @@ end, false)
 
 -- ── Snapshot: everything the shell needs in one round trip ──
 lib.callback.register('XS-CriminalTablet:getSnapshot', function(src)
+    FrameworkLink.MaybeSync(src)
     local cid = Framework.GetCitizenId(src)
     local gang = cid and Gangs.GetByCitizen(cid) or nil
     local snapshot = gang and Gangs.Snapshot(src) or nil
@@ -44,7 +47,14 @@ lib.callback.register('XS-CriminalTablet:getSnapshot', function(src)
         territories = gang and Territory.GetVisible(src) or {},
         capture = gang and Capture.Snapshot() or {},
         war = gang and War.PublicState(War.ActiveFor(gang.id)) or nil,
+        warRequests = gang and War.Requests(gang.id) or nil,
+        doc = gang and Medic.ForCrew(gang.id) or nil,
         stash = gang and War.StashFor(gang.id) or nil,
+        locker = gang and Placeables.FindFor(gang.id, 'vault') and {
+            cashPct = Config.War.stash.enabled and Config.War.stash.cashPct or 0,
+            cashMax = Config.War.stash.cashMax,
+            itemStacks = Config.War.stash.enabled and Config.War.stash.lootItems and Config.War.stash.maxItemStacks or 0,
+        } or nil,
         testMode = TestMode.Snapshot(),
         noGangMessage = Config.NoGangMessage,
         isAdmin = IsPlayerAceAllowed(src, Config.AdminAce),
@@ -88,7 +98,7 @@ lib.callback.register('XS-CriminalTablet:gang:getLiveMap', function(src)
                 name = m and m.name or Framework.GetName(memberSrc),
                 rank = m and gang.ranks[m.grade] and gang.ranks[m.grade].name or '?',
                 coords = { x = coords.x, y = coords.y, z = coords.z },
-                dead = GetEntityHealth(ped) <= 0,
+                dead = Medic.IsDown(memberSrc),
                 inVehicle = GetVehiclePedIsIn(ped, false) ~= 0,
                 zone = zoneKey,
                 zoneLabel = zone and zone.label or nil,
@@ -100,6 +110,7 @@ lib.callback.register('XS-CriminalTablet:gang:getLiveMap', function(src)
     return {
         members = members,
         hq = Placeables.CoordsFor(gang.id, 'hq'),
+        doc = Medic.ForCrew(gang.id),
         territories = Territory.GetVisible(src),
         capture = Capture.Snapshot(),
     }

@@ -27,6 +27,14 @@ RegisterNUICallback('admin:close', function(_, cb)
     cb({})
 end)
 
+-- The job builder's "walk and place": close the builder, drop the spots in
+-- the world, and come back to the same job with them filled in.
+RegisterNUICallback('admin:jobWalk', function(data, cb)
+    closeAdmin()
+    cb({})
+    JobWalk.Start(type(data) == 'table' and data or {})
+end)
+
 RegisterNetEvent('QBCore:Client:OnPlayerUnload', function()
     closeAdmin()
 end)
@@ -38,6 +46,19 @@ local adminAllowed = {
     ['XS-CriminalTablet:admin:getMembers']      = true,
     ['XS-CriminalTablet:admin:getRanks']        = true,
     ['XS-CriminalTablet:admin:updateRank']      = true,
+    ['XS-CriminalTablet:admin:settings']        = true,
+    ['XS-CriminalTablet:admin:findPlayers']     = true,
+    ['XS-CriminalTablet:admin:jobs']            = true,
+    ['XS-CriminalTablet:admin:content']         = true,
+    ['XS-CriminalTablet:admin:approvals']       = true,
+    ['XS-CriminalTablet:admin:review']          = true,
+    ['XS-CriminalTablet:admin:removeLogo']      = true,
+    ['XS-CriminalTablet:admin:saveContent']     = true,
+    ['XS-CriminalTablet:admin:resetContent']    = true,
+    ['XS-CriminalTablet:admin:saveJob']         = true,
+    ['XS-CriminalTablet:admin:deleteJob']       = true,
+    ['XS-CriminalTablet:admin:restoreJob']      = true,
+    ['XS-CriminalTablet:admin:saveSettings']    = true,
     ['XS-CriminalTablet:admin:getPrices']       = true,
     ['XS-CriminalTablet:admin:setPrice']        = true,
     ['XS-CriminalTablet:admin:resetPrice']      = true,
@@ -91,6 +112,10 @@ local adminAllowed = {
     ['XS-CriminalTablet:admin:chatResolveHandle'] = true,
     ['XS-CriminalTablet:admin:dealerGetStock']      = true,
     ['XS-CriminalTablet:admin:dealerState']         = true,
+    ['XS-CriminalTablet:admin:docState']            = true,
+    ['XS-CriminalTablet:admin:docSetHere']          = true,
+    ['XS-CriminalTablet:admin:docSet']              = true,
+    ['XS-CriminalTablet:admin:docReset']            = true,
     ['XS-CriminalTablet:admin:dealerAddItem']       = true,
     ['XS-CriminalTablet:admin:dealerRemoveItem']    = true,
     ['XS-CriminalTablet:admin:dealerAddSpawn']      = true,

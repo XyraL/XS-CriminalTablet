@@ -29,6 +29,9 @@ function XSTablet.RegisterApp(app)
         icon = app.icon or 'fa-square',
         group = app.group or 'crew',
         enabled = app.enabled ~= false,
+        -- Config path of the switch that turns this app on, read live so a
+        -- change in the builder settings shows without a restart.
+        toggle = app.toggle,
         order = app.order or 100,
         -- Optional rank permission needed to even see the app. The server
         -- re-checks every action regardless — this only tidies the rail.
@@ -43,7 +46,8 @@ function XSTablet.GetEnabledApps(hasGang, hasPerm)
     local list = {}
     for _, app in pairs(XSTablet.Apps) do
         local allowed = not app.permission or (hasPerm and hasPerm(app.permission))
-        if app.enabled and allowed then list[#list + 1] = app end
+        local on = app.enabled and (not app.toggle or Settings.Read(app.toggle) ~= false)
+        if on and allowed then list[#list + 1] = app end
     end
     table.sort(list, function(a, b)
         if a.order == b.order then return a.id < b.id end
@@ -68,23 +72,23 @@ XSTablet.RegisterApp({
 
 XSTablet.RegisterApp({
     id = 'war', label = 'War Room', icon = 'fa-crosshairs', group = 'streets', order = 40,
-    enabled = Config.War.enabled,
+    toggle = 'War.enabled',
 })
 
 XSTablet.RegisterApp({
     id = 'contracts', label = 'Contracts', icon = 'fa-file-signature', group = 'streets', order = 50,
-    enabled = Config.Contracts.enabled,
+    toggle = 'Contracts.enabled',
 })
 
 -- ── Assets ──
 XSTablet.RegisterApp({
     id = 'garage', label = 'Garage', icon = 'fa-warehouse', group = 'assets', order = 60,
-    enabled = Config.Garage.enabled,
+    toggle = 'Garage.enabled',
 })
 
 XSTablet.RegisterApp({
     id = 'graffiti', label = 'Studio', icon = 'fa-spray-can', group = 'assets', order = 70,
-    enabled = Config.Graffiti.enabled,
+    toggle = 'Graffiti.enabled',
 })
 
 XSTablet.RegisterApp({
@@ -94,11 +98,16 @@ XSTablet.RegisterApp({
 -- ── Intel ──
 XSTablet.RegisterApp({
     id = 'standing', label = 'Standing', icon = 'fa-ranking-star', group = 'intel', order = 90,
-    enabled = Config.Analytics.enabled,
+    toggle = 'Analytics.enabled',
     permission = 'view_analytics',
 })
 
 XSTablet.RegisterApp({
+    id = 'rivals', label = 'Rivals', icon = 'fa-user-secret', group = 'intel', order = 95,
+    toggle = 'Intel.enabled',
+})
+
+XSTablet.RegisterApp({
     id = 'blackmarket', label = 'Blackmarket', icon = 'fa-comments', group = 'intel', order = 100,
-    enabled = Config.Chat.enabled,
+    toggle = 'Chat.enabled',
 })

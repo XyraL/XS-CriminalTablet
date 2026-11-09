@@ -10,9 +10,9 @@
 --   shared meter; whoever leads by scoreToWin (or is ahead when the clock
 --   runs out) wins. Winning opens the stash raid.
 --
--- STASH RAID — after a war win, the loser's placed Crew Safe is lootable
---   for a window. Real cash out of their treasury and real stacks out of
---   their vault, so the safe is a genuine liability to place.
+-- STASH RAID — after a war win, the loser's placed Crew Locker can be
+--   broken into for a window. Real cash out of their treasury and real
+--   stacks out of the locker itself.
 -- ─────────────────────────────────────────────────────────────
 War = {}
 
@@ -66,6 +66,115 @@ local function pushState(state)
     end)
 end
 
+-- One line in the on-screen feed for everyone on both sides.
+local function feed(state, entry)
+    if not Config.War.killFeed then return end
+    bothSides(state, function(gangId) Gangs.Broadcast(gangId, 'warFeed', entry) end)
+end
+
+local function sideOf(state, gangId)
+    if gangId == state.attackerId then return 'attack' end
+    if gangId == state.defenderId then return 'defend' end
+    return nil
+end
+
+-- ── objectives ──────────────────────────────────────────────
+-- Points on the two crews' own blocks, defender's first, alternating. A
+-- crew with no blocks offers its HQ instead. Taking one scores; holding it
+-- keeps scoring; a point with both sides on it does nothing until one
+-- side clears it.
+local LETTERS = { 'A', 'B', 'C', 'D', 'E' }
+
+local function pickObjectives(state)
+    local cfg = Config.War.objectives
+    if not cfg or not cfg.enabled then return {} end
+    local want = math.max(1, math.min(5, math.floor(cfg.count or 3)))
+    local pools = { {}, {} }
+    for i, gangId in ipairs({ state.defenderId, state.attackerId }) do
+        for _, z in ipairs(Territory.HeldBy(gangId)) do
+            local c = Territory.CenterOf(z.zone)
+            if c then pools[i][#pools[i] + 1] = { label = z.label, coords = c } end
+        end
+        if #pools[i] == 0 then
+            local hq = Placeables.CoordsFor(gangId, 'hq')
+            local gang = Gangs.Get(gangId)
+            if hq then pools[i][1] = { label = ((gang and gang.label) or 'Crew') .. ' HQ', coords = hq } end
+        end
+        for j = #pools[i], 2, -1 do
+            local k = math.random(j)
+            pools[i][j], pools[i][k] = pools[i][k], pools[i][j]
+        end
+    end
+    local out, side = {}, 1
+    while #out < want and (#pools[1] > 0 or #pools[2] > 0) do
+        local pool = #pools[side] > 0 and pools[side] or pools[3 - side]
+        local p = table.remove(pool, 1)
+        out[#out + 1] = { id = LETTERS[#out + 1], label = p.label, coords = p.coords, progress = 0, heldFor = 0 }
+        side = 3 - side
+    end
+    return out
+end
+
+local function award(state, side, points)
+    if side == 'attack' then state.scoreAttack = (state.scoreAttack or 0) + points
+    else state.scoreDefend = (state.scoreDefend or 0) + points end
+end
+
+local function objectiveTick(state)
+    local cfg = Config.War.objectives
+    if not cfg or not cfg.enabled or not state.objectives or #state.objectives == 0 then return false end
+    local counts = {}
+    for i in ipairs(state.objectives) do counts[i] = { attack = 0, defend = 0 } end
+    for _, p in ipairs(GetPlayers()) do
+        local src = tonumber(p)
+        local ped = GetPlayerPed(src)
+        if ped and ped ~= 0 and GetEntityHealth(ped) > 0 then
+            local gang = Gangs.GetBySource(src)
+            local side = gang and sideOf(state, gang.id)
+            if side then
+                local pos = GetEntityCoords(ped)
+                for i, o in ipairs(state.objectives) do
+                    if #(pos - o.coords) <= cfg.radius then counts[i][side] = counts[i][side] + 1 end
+                end
+            end
+        end
+    end
+    local changed = false
+    for i, o in ipairs(state.objectives) do
+        local a, d = counts[i].attack, counts[i].defend
+        local alone = (a > 0 and d == 0) and 'attack' or ((d > 0 and a == 0) and 'defend' or nil)
+        local wasContested = o.contested
+        o.contested = a > 0 and d > 0
+        if o.contested ~= wasContested then changed = true end
+        if alone and alone ~= o.owner then
+            if o.taking ~= alone then o.taking = alone; o.progress = 0 end
+            o.progress = o.progress + 1
+            changed = true
+            if o.progress >= cfg.captureSeconds then
+                o.owner, o.taking, o.progress, o.heldFor = alone, nil, 0, 0
+                award(state, alone, cfg.capturePoints)
+                local gang = Gangs.Get(alone == 'attack' and state.attackerId or state.defenderId)
+                feed(state, { kind = 'objective', side = alone, crew = gang and gang.label or '?', color = gang and gang.color or nil, letter = o.id, label = o.label })
+            end
+        elseif o.taking and not o.contested then
+            -- Nobody pushing, or the holder back on it: a half-taken point
+            -- slips back, faster when the holder is standing on it.
+            o.progress = math.max(0, o.progress - (alone == o.owner and alone and 2 or 1))
+            if o.progress == 0 then o.taking = nil end
+            changed = true
+        end
+        if o.owner and not o.contested then
+            o.heldFor = (o.heldFor or 0) + 1
+            if o.heldFor >= cfg.holdSeconds then
+                o.heldFor = 0
+                award(state, o.owner, cfg.holdPoints)
+                changed = true
+            end
+        end
+    end
+    return changed
+end
+
 -- ── shared state shape ──────────────────────────────────────
 function War.PublicState(state)
     if not state then return nil end
@@ -78,12 +187,28 @@ function War.PublicState(state)
         attackerId = state.attackerId,
         attackerLabel = attacker and attacker.label or '?',
         attackerColor = attacker and attacker.color or nil,
+        attackerLogo = attacker and attacker.logo or nil,
         defenderId = state.defenderId,
         defenderLabel = defender and defender.label or '?',
         defenderColor = defender and defender.color or nil,
+        defenderLogo = defender and defender.logo or nil,
         scoreAttack = state.scoreAttack or 0,
         scoreDefend = state.scoreDefend or 0,
         scoreToWin = Config.War.war.scoreToWin,
+        killsAttack = state.killsAttack or 0,
+        killsDefend = state.killsDefend or 0,
+        serverNow = now(),
+        objectives = (function()
+            local out = {}
+            local need = Config.War.objectives and Config.War.objectives.captureSeconds or 30
+            for _, o in ipairs(state.objectives or {}) do
+                out[#out + 1] = { id = o.id, label = o.label, x = o.coords.x, y = o.coords.y, z = o.coords.z,
+                    owner = o.owner, taking = o.taking, contested = o.contested or false,
+                    progress = math.floor(math.min(100, (o.progress or 0) / math.max(1, need) * 100)) }
+            end
+            return out
+        end)(),
+        objectiveRadius = Config.War.objectives and Config.War.objectives.radius or 12.0,
         holdProgress = state.holdProgress and math.floor(state.holdProgress) or 0,
         holdTarget = Config.War.raid.holdSeconds,
         endsAt = state.endsAt,
@@ -142,10 +267,10 @@ end
 
 local function openStashWindow(warId, winnerId, loserId)
     if not Config.War.stash.enabled then return end
-    -- No safe placed means nothing to loot — don't open a window that
+    -- No locker placed means nothing to loot — don't open a window that
     -- sends the winner chasing a marker that doesn't exist.
-    if not Placeables.FindFor(loserId, 'safe') then
-        Gangs.NotifyGang(winnerId, 'They never placed a safe — nothing to loot.', 'inform')
+    if not Placeables.FindFor(loserId, 'vault') then
+        Gangs.NotifyGang(winnerId, 'They never placed a locker — nothing to loot.', 'inform')
         return
     end
 
@@ -154,9 +279,9 @@ local function openStashWindow(warId, winnerId, loserId)
         'INSERT INTO xs_gang_stash_windows (war_id, winner_id, loser_id, expires_at) VALUES (?, ?, ?, ?)',
         { warId, winnerId, loserId, expires })
 
-    Gangs.NotifyGang(winnerId, ('Their safe is exposed for %d minutes — go get it.'):format(
+    Gangs.NotifyGang(winnerId, ('Their locker is open to you for %d minutes — go get it.'):format(
         Config.War.war.stashWindowMinutes), 'success')
-    Gangs.NotifyGang(loserId, 'Your safe is exposed. Defend it.', 'error')
+    Gangs.NotifyGang(loserId, 'Your locker is exposed. Defend it.', 'error')
     Gangs.Broadcast(winnerId, 'stash', War.StashFor(winnerId))
     Gangs.Broadcast(loserId, 'stash', {})
 end
@@ -167,6 +292,10 @@ local function finish(state, winnerId, reason)
     active[state.id] = nil
 
     local loserId = winnerId and (winnerId == state.attackerId and state.defenderId or state.attackerId) or nil
+    if Intel then
+        Intel.Record(state.kind, state.attackerId, state.defenderId,
+            winnerId == nil and 'draw' or (winnerId == state.attackerId and 'won' or 'lost'))
+    end
 
     if winnerId then
         MySQL.update('UPDATE xs_gang_wars SET state = ?, winner_id = ?, finished_at = ?, score_attack = ?, score_defend = ? WHERE id = ?',
@@ -315,6 +444,57 @@ function War.StartRaid(src, defenderGangId)
 end
 
 -- ── war ─────────────────────────────────────────────────────
+-- ── war requests ────────────────────────────────────────────
+-- A war only starts when the other crew says yes. Turning it down, or
+-- leaving it until it runs out, just means no war. Raids never ask.
+local requests = {}      -- [id] = { id, attackerId, defenderId, byName, at, expiresAt }
+local nextRequestId = 0
+local turnedDown = {}    -- ['attacker:defender'] = no new request before this
+
+local function requestBetween(a, b)
+    for _, r in pairs(requests) do
+        if (r.attackerId == a and r.defenderId == b) or (r.attackerId == b and r.defenderId == a) then return r end
+    end
+    return nil
+end
+
+local function outgoingFrom(gangId)
+    for _, r in pairs(requests) do if r.attackerId == gangId then return r end end
+    return nil
+end
+
+local function shapeRequest(r)
+    local a, d = Gangs.Get(r.attackerId), Gangs.Get(r.defenderId)
+    return {
+        id = r.id, byName = r.byName, at = r.at, expiresAt = r.expiresAt,
+        attackerId = r.attackerId, attackerLabel = a and a.label or '?', attackerColor = a and a.color or nil, attackerLogo = a and a.logo or nil,
+        defenderId = r.defenderId, defenderLabel = d and d.label or '?', defenderColor = d and d.color or nil, defenderLogo = d and d.logo or nil,
+    }
+end
+
+function War.Requests(gangId)
+    local incoming, outgoing = {}, {}
+    for _, r in pairs(requests) do
+        if r.defenderId == gangId then incoming[#incoming + 1] = shapeRequest(r) end
+        if r.attackerId == gangId then outgoing[#outgoing + 1] = shapeRequest(r) end
+    end
+    table.sort(incoming, function(x, y) return x.at < y.at end)
+    return { incoming = incoming, outgoing = outgoing }
+end
+
+local function closeRequest(r, how)
+    requests[r.id] = nil
+    if how == 'declined' or how == 'expired' then
+        turnedDown[r.attackerId .. ':' .. r.defenderId] = now() + (Config.War.war.requestCooldownMinutes or 0) * 60000
+    end
+    if Intel and how ~= 'accepted' and how ~= 'void' then Intel.Record('warreq', r.attackerId, r.defenderId, how) end
+    Gangs.Broadcast(r.attackerId, 'warRequest', {})
+    Gangs.Broadcast(r.defenderId, 'warRequest', {})
+end
+
+-- Asking for a war. Everything that would stop the war is checked now, so a
+-- crew is never asked to accept something that cannot happen; the cost is
+-- only taken once they accept.
 function War.Declare(src, defenderGangId)
     if not Config.War.enabled then return false, 'war is disabled' end
     if not Gangs.HasPerm(src, 'declare_war') then return false, 'no permission' end
@@ -341,6 +521,26 @@ function War.Declare(src, defenderGangId)
         return false, ('declaring war costs $%d'):format(Config.War.war.declareCost)
     end
 
+    if requestBetween(attacker.id, defender.id) then return false, 'there is already a war request between you' end
+    if outgoingFrom(attacker.id) then return false, 'your crew already has a war request out' end
+    local key = attacker.id .. ':' .. defender.id
+    if (turnedDown[key] or 0) > now() then
+        return false, ('they did not take it last time; you can ask again in %d min'):format(math.ceil((turnedDown[key] - now()) / 60000))
+    end
+
+    nextRequestId = nextRequestId + 1
+    local r = { id = nextRequestId, attackerId = attacker.id, defenderId = defender.id,
+        byName = Framework.GetName(src) or '?', at = now(), expiresAt = now() + (Config.War.war.requestMinutes or 5) * 60000 }
+    requests[r.id] = r
+    Gangs.NotifyGang(defender.id, ('%s want a war with you. Answer it in the War Room.'):format(attacker.label), 'error')
+    Gangs.Log(attacker.id, ('Asked %s for a war'):format(defender.label), 'war')
+    Gangs.Log(defender.id, ('%s asked us for a war'):format(attacker.label), 'war')
+    Gangs.Broadcast(attacker.id, 'warRequest', {})
+    Gangs.Broadcast(defender.id, 'warRequest', {})
+    return true
+end
+
+local function startWar(attacker, defender)
     if not claimPair(attacker.id, defender.id) then return false, 'that is already being declared' end
 
     local affected = MySQL.update.await('UPDATE xs_gangs SET bank = bank - ? WHERE id = ? AND bank >= ?',
@@ -362,8 +562,9 @@ function War.Declare(src, defenderGangId)
         id = warId, kind = 'war', phase = 'active',
         attackerId = attacker.id, defenderId = defender.id,
         startsAt = startsAt, endsAt = endsAt,
-        scoreAttack = 0, scoreDefend = 0,
+        scoreAttack = 0, scoreDefend = 0, killsAttack = 0, killsDefend = 0,
     }
+    active[warId].objectives = pickObjectives(active[warId])
     releasePair(attacker.id, defender.id)
 
     local cooldownUntil = now() + (Config.War.war.cooldownMinutes or 0) * 60000
@@ -372,11 +573,57 @@ function War.Declare(src, defenderGangId)
 
     announce(active[warId], ('War: %s vs %s. %d minutes.'):format(
         attacker.label, defender.label, Config.War.war.durationMinutes), 'error')
-    Gangs.Log(attacker.id, ('Declared war on %s'):format(defender.label), 'war')
-    Gangs.Log(defender.id, ('%s declared war on us'):format(attacker.label), 'war')
-    Discord.Send('war', 'War declared', ('%s vs %s'):format(attacker.label, defender.label), Discord.Color.bad)
+    Gangs.Log(attacker.id, ('%s accepted the war'):format(defender.label), 'war')
+    Gangs.Log(defender.id, ('Accepted a war with %s'):format(attacker.label), 'war')
+    Discord.Send('war', 'War started', ('%s vs %s'):format(attacker.label, defender.label), Discord.Color.bad)
 
     pushState(active[warId])
+    return true
+end
+
+-- The asked crew's answer. Only the boss or a rank that can declare war
+-- answers for the crew.
+function War.Respond(src, requestId, accept)
+    local gang = Gangs.GetBySource(src)
+    local r = requests[tonumber(requestId)]
+    if not gang or not r then return false, 'that request is no longer there' end
+    if r.defenderId ~= gang.id then return false, 'that request is not for your crew' end
+    if gang.owner ~= Framework.GetCitizenId(src) and not Gangs.HasPerm(src, 'declare_war') then return false, 'no permission' end
+    local attacker = Gangs.Get(r.attackerId)
+
+    if not accept then
+        closeRequest(r, 'declined')
+        Gangs.NotifyGang(r.attackerId, ('%s turned down your war.'):format(gang.label), 'inform')
+        Gangs.Log(r.attackerId, ('%s turned down the war'):format(gang.label), 'war')
+        Gangs.Log(gang.id, ('Turned down a war with %s'):format(attacker and attacker.label or '?'), 'war')
+        return true
+    end
+
+    if not Config.War.enabled then return false, 'war is disabled' end
+    if not attacker then closeRequest(r, 'void') return false, 'that crew is gone' end
+    if War.ActiveFor(attacker.id) or War.ActiveFor(gang.id) then
+        return false, 'one of you is already in a fight; answer once it is over'
+    end
+    if attacker.bank < Config.War.war.declareCost then
+        closeRequest(r, 'void')
+        Gangs.NotifyGang(attacker.id, ('%s accepted, but your treasury cannot cover the war.'):format(gang.label), 'error')
+        return false, ('%s can no longer afford the war'):format(attacker.label)
+    end
+    local ok, err = startWar(attacker, gang)
+    if not ok then return false, err end
+    closeRequest(r, 'accepted')
+    return true
+end
+
+function War.CancelRequest(src)
+    local gang = Gangs.GetBySource(src)
+    if not gang then return false, 'no gang' end
+    if gang.owner ~= Framework.GetCitizenId(src) and not Gangs.HasPerm(src, 'declare_war') then return false, 'no permission' end
+    local r = outgoingFrom(gang.id)
+    if not r then return false, 'no request to take back' end
+    closeRequest(r, 'cancelled')
+    Gangs.NotifyGang(r.defenderId, ('%s took back their war request.'):format(gang.label), 'inform')
+    Gangs.Log(gang.id, 'Took back a war request', 'war')
     return true
 end
 
@@ -397,8 +644,15 @@ RegisterNetEvent('XS-CriminalTablet:server:reportWarKill', function(killerServer
     if not victimGang or not killerGang or victimGang.id == killerGang.id then return end
 
     local state = War.ActiveFor(killerGang.id)
-    if not state or state.kind ~= 'war' or state.phase ~= 'active' then return end
+    if not state or state.phase ~= 'active' then return end
     if state.attackerId ~= victimGang.id and state.defenderId ~= victimGang.id then return end
+
+    local killerSide = sideOf(state, killerGang.id)
+    feed(state, { kind = 'kill', side = killerSide,
+        killer = Framework.GetName(killerServerId) or '?', killerColor = killerGang.color,
+        victim = Framework.GetName(victimSrc) or '?', victimColor = victimGang.color })
+    -- Raids are won on the HQ, not on kills; only a war scores them.
+    if state.kind ~= 'war' then return end
 
     -- Farming the same person over and over doesn't pay.
     local pairKey = killerCid .. ':' .. victimCid
@@ -407,8 +661,10 @@ RegisterNetEvent('XS-CriminalTablet:server:reportWarKill', function(killerServer
 
     if killerGang.id == state.attackerId then
         state.scoreAttack = (state.scoreAttack or 0) + Config.War.war.killScore
+        state.killsAttack = (state.killsAttack or 0) + 1
     else
         state.scoreDefend = (state.scoreDefend or 0) + Config.War.war.killScore
+        state.killsDefend = (state.killsDefend or 0) + 1
     end
 
     pushState(state)
@@ -476,6 +732,14 @@ local function raidTick(state)
 end
 
 local function warTick(state)
+    if objectiveTick(state) then
+        local lead = (state.scoreAttack or 0) - (state.scoreDefend or 0)
+        if math.abs(lead) >= Config.War.war.scoreToWin then
+            finish(state, lead > 0 and state.attackerId or state.defenderId, 'score')
+            return
+        end
+        pushState(state)
+    end
     if now() >= state.endsAt then
         local lead = (state.scoreAttack or 0) - (state.scoreDefend or 0)
         if lead == 0 then finish(state, nil, 'draw')
@@ -483,16 +747,28 @@ local function warTick(state)
     end
 end
 
+-- One second of every live raid and war, and the clock on war requests.
+function War.Tick()
+    for _, r in pairs(requests) do
+        if now() >= r.expiresAt then
+            local asked = Gangs.Get(r.defenderId)
+            closeRequest(r, 'expired')
+            Gangs.NotifyGang(r.attackerId, ('%s did not answer your war request.'):format(asked and asked.label or 'They'), 'inform')
+        end
+    end
+    for _, state in pairs(active) do
+        local ok, err = pcall(state.kind == 'raid' and raidTick or warTick, state)
+        if not ok and Config.Debug then
+            print(('^1[XS-CriminalTablet]^0 war tick error: %s'):format(err))
+        end
+    end
+end
+
 CreateThread(function()
     Wait(6000)
     while true do
         Wait(1000)
-        for _, state in pairs(active) do
-            local ok, err = pcall(state.kind == 'raid' and raidTick or warTick, state)
-            if not ok and Config.Debug then
-                print(('^1[XS-CriminalTablet]^0 war tick error: %s'):format(err))
-            end
-        end
+        War.Tick()
     end
 end)
 
@@ -510,7 +786,7 @@ function War.StashFor(gangId)
         { gangId, now() })
     if not row then return nil end
 
-    local safe = Placeables.CoordsFor(row.loser_id, 'safe')
+    local safe = Placeables.CoordsFor(row.loser_id, 'vault')
     if not safe then return nil end
     local loser = Gangs.Get(row.loser_id)
 
@@ -536,7 +812,7 @@ function War.LootStash(src)
 
     local pos = GetEntityCoords(GetPlayerPed(src))
     if #(pos - vec3(window.coords.x, window.coords.y, window.coords.z)) > Config.War.stash.lootRadius + 1.5 then
-        return false, 'you are not at their safe'
+        return false, 'you are not at their locker'
     end
 
     -- Claim the window first: two members racing must not double-loot.
@@ -588,10 +864,10 @@ function War.LootStash(src)
     end
 
     local detail = ('$%d and %d item stack%s'):format(cash, #taken, #taken == 1 and '' or 's')
-    Gangs.Log(gang.id, ('%s cracked %s\'s safe — %s'):format(
+    Gangs.Log(gang.id, ('%s broke into %s\'s locker — %s'):format(
         Framework.GetName(src) or 'Someone', window.loserLabel, detail), 'war')
-    Gangs.Log(window.loserId, ('%s cracked our safe — lost %s'):format(gang.label, detail), 'war')
-    Gangs.NotifyGang(window.loserId, ('%s cracked your safe.'):format(gang.label), 'error')
+    Gangs.Log(window.loserId, ('%s broke into our locker — lost %s'):format(gang.label, detail), 'war')
+    Gangs.NotifyGang(window.loserId, ('%s broke into your locker.'):format(gang.label), 'error')
     Discord.Send('war', 'Stash raided', ('%s took %s from %s'):format(gang.label, detail, window.loserLabel), Discord.Color.bad)
 
     Gangs.Broadcast(gang.id, 'stash', nil)
@@ -648,9 +924,14 @@ function War.Overview(src)
         raidCooldown = gang.raid_cooldown or 0,
         raidImmune = gang.raid_immune or 0,
         hasHq = Placeables.FindFor(gang.id, 'hq') ~= nil,
-        hasSafe = Placeables.FindFor(gang.id, 'safe') ~= nil,
+        hasLocker = Placeables.FindFor(gang.id, 'vault') ~= nil,
         canRaid = Gangs.HasPerm(src, 'start_raid'),
         canDeclare = Gangs.HasPerm(src, 'declare_war'),
+        canAnswer = gang.owner == Framework.GetCitizenId(src) or Gangs.HasPerm(src, 'declare_war'),
+        requests = War.Requests(gang.id),
+        warMinutes = Config.War.war.durationMinutes,
+        scoreToWin = Config.War.war.scoreToWin,
+        requestMinutes = Config.War.war.requestMinutes,
         canLoot = Gangs.HasPerm(src, 'stash_raid'),
         now = now(),
     }
@@ -677,6 +958,16 @@ end)
 
 lib.callback.register('XS-CriminalTablet:war:startRaid', function(src, gangId)
     local ok, err = War.StartRaid(src, gangId)
+    return { ok = ok, error = err }
+end)
+
+lib.callback.register('XS-CriminalTablet:war:respond', function(src, requestId, accept)
+    local ok, err = War.Respond(src, requestId, accept == true)
+    return { ok = ok, error = err }
+end)
+
+lib.callback.register('XS-CriminalTablet:war:cancelRequest', function(src)
+    local ok, err = War.CancelRequest(src)
     return { ok = ok, error = err }
 end)
 

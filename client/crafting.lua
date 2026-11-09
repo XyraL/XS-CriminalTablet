@@ -39,15 +39,16 @@ local function closeCraftBench()
     isOpen = false
     SetNuiFocus(false, false)
     SendNUIMessage({ action = 'craftClose' })
+    lib.callback('XS-CriminalTablet:crafting:cancel', false, function() end)
     stopCraftCam()
 end
 
 RegisterNetEvent('XS-CriminalTablet:client:openCraftBench', function(benchLabel, benchCoords)
     if isOpen then return end
-    local recipes = lib.callback.await('XS-CriminalTablet:crafting:getRecipes', false)
+    local data = lib.callback.await('XS-CriminalTablet:crafting:getRecipes', false)
     isOpen = true
     SetNuiFocus(true, true)
-    SendNUIMessage({ action = 'craftOpen', label = benchLabel, recipes = recipes or {} })
+    SendNUIMessage({ action = 'craftOpen', label = benchLabel, data = data or {} })
     startCraftCam(benchCoords)
 end)
 
@@ -56,8 +57,13 @@ RegisterNUICallback('craft:close', function(_, cb)
     cb({})
 end)
 
-RegisterNUICallback('craft:make', function(data, cb)
-    local res = lib.callback.await('XS-CriminalTablet:crafting:craft', false, data.id)
+RegisterNUICallback('craft:begin', function(data, cb)
+    local res = lib.callback.await('XS-CriminalTablet:crafting:begin', false, data.id, data.qty)
+    cb(res or {})
+end)
+
+RegisterNUICallback('craft:finish', function(_, cb)
+    local res = lib.callback.await('XS-CriminalTablet:crafting:finish', false)
     cb(res or {})
 end)
 

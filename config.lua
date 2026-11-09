@@ -104,6 +104,10 @@ Config.MaxMembers = 30
 -- How many ranks a gang may have on its ladder at once.
 Config.MaxRanks = 10
 
+-- The grade new members join on, from an invite or from staff. A crew with
+-- no rank at that grade puts them on the nearest one below it.
+Config.JoinGrade = 0
+
 -- ─────────────────────────────────────────────────────────────
 -- Gangs
 -- Optional first-boot seed only. Everything after that is managed live
@@ -133,6 +137,15 @@ Config.GangColors = {
 -- resources (jobs, doors, dispatch) see it. Off by default — turn it on
 -- only if your framework's gangs aren't already managed elsewhere.
 Config.SyncFrameworkGang = false
+
+-- Framework gang link. On a crew's settings in the builder, pick a gang from
+-- the framework's own list. Members of that gang join the crew on the rank
+-- that matches their framework grade, and leave it when the framework takes
+-- them out. Changes made on the tablet go back to the framework gang.
+Config.FrameworkLink = {
+    enabled = true,
+    matchGrades = true,     -- false puts everyone on Config.JoinGrade instead
+}
 
 -- ─────────────────────────────────────────────────────────────
 -- Rep
@@ -377,14 +390,15 @@ Config.Territories = {}
 -- `kind` decides what the placed thing DOES:
 --   hq      — the crew's home point. Gang blip, radial spawn anchor, and
 --             where the airdrop-style countdowns and war staging read from.
---   vault   — the shared ox_inventory stash container.
---   safe    — the raidable cash stash. This is what a rival loots after
---             winning a war, so a gang that places one is opting into risk.
+--   vault   — the shared ox_inventory stash. A rival who wins a war can
+--             break into it during the stash window.
 --   garage  — the gang vehicle garage point.
---   medic   — the unlocked gang medic station.
+--   medic   — access to the street doc (see Config.Medic). Nothing to place.
 --   bench   — a crafting bench (recipes gate themselves by tier).
---   task    — a contract drop point the contracts board can route to.
+--   task    — Crew Contracts: more pay on every contract. Nothing to place.
 --   prop    — pure decoration, no interaction.
+--
+-- `placeable = false` makes an unlock that works as soon as it is bought.
 --
 -- Model names are plain strings, not backtick hash literals: placements
 -- round-trip through a VARCHAR column, and a backtick literal compiles to
@@ -398,15 +412,15 @@ Config.Territories = {}
 Config.TierUnlocks = {
     Unknown = {
         { id = 'hq_sign',        kind = 'hq',     model = 'prop_laptop_01a',    label = 'Crew Laptop',    price = 0 },
-        { id = 'gang_vault',     kind = 'vault',  model = 'prop_toolchest_05',  label = 'Crew Locker',    price = 15000 },
+        { id = 'gang_vault',     kind = 'vault',  model = 'prop_mil_crate_01',  label = 'Crew Locker',    price = 15000 },
     },
     Local = {
         { id = 'local_crafting_bench', kind = 'bench', model = 'prop_tool_bench02', label = 'Crafting Bench', price = 25000 },
-        { id = 'gang_garage',    kind = 'garage', model = 'prop_toolchest_04',  label = 'Garage Point',   price = 40000 },
-        { id = 'gang_safe',      kind = 'safe',   model = 'p_v_43_safe_s',      label = 'Crew Safe',      price = 30000 },
+        { id = 'gang_garage',    kind = 'garage', model = 'prop_parknmeter_01', label = 'Garage Point',   price = 40000 },
     },
     Feared = {
-        { id = 'contract_drop',  kind = 'task',   model = 'prop_box_ammo04a',   label = 'Contract Drop',  price = 20000 },
+        { id = 'contract_drop',  kind = 'task',   label = 'Crew Contracts', price = 20000, placeable = false },
+        { id = 'street_doc',     kind = 'medic',  label = 'Street Doc',     price = 35000, placeable = false },
         { id = 'gate_barrier',   kind = 'prop',   model = 'prop_barrier_work05', label = 'Roadblock',     price = 5000 },
     },
     -- Nothing at the top two tiers out of the box. Decoration was cut on
@@ -449,6 +463,13 @@ Config.Garage = {
     -- QBox/QBCore key resources are tried; anything unknown is a no-op and
     -- the vehicle simply spawns unlocked.
     giveKeys = true,
+    -- Which key resource to use: 'auto' finds a running one, 'none' skips
+    -- keys, or name one (qbx_vehiclekeys, qb-vehiclekeys, wasabi_carlock,
+    -- Renewed-Vehiclekeys, qs-vehiclekeys, mk_vehiclekeys, cd_garage,
+    -- okokGarage, t1ger_keys, vehicles_keys).
+    keys = 'auto',
+    -- Put the player in the driver's seat when a car comes out.
+    warpIn = true,
     -- The garage is somewhere the crew PARKS. There is no stock list of
     -- cars to hand out — members store vehicles they already have and
     -- pull them back out here.
@@ -644,10 +665,32 @@ Config.War = {
         cooldownMinutes = 180,
         -- The loser's safe becomes lootable for this long after a war.
         stashWindowMinutes = 15,
+        -- A war only starts when the other crew accepts. They get this long
+        -- to answer. After a no (or no answer) you wait this long before you
+        -- can ask the same crew again.
+        requestMinutes = 5,
+        requestCooldownMinutes = 30,
     },
 
-    -- Stash raid: after a war win, the loser's placed Crew Safe is
-    -- lootable. A compass arrow, blip and live distance guide the winner in.
+    -- Objectives: points on each crew's own blocks (their HQ when they hold
+    -- none) that either side can take and hold during a war. Taking one
+    -- scores, and holding it keeps scoring, so a war is won on the map as
+    -- well as on kills.
+    objectives = {
+        enabled = true,
+        count = 3,              -- points per war, split across both crews' blocks
+        radius = 12.0,          -- how close counts as standing on one
+        captureSeconds = 30,    -- time alone on it to take it
+        capturePoints = 2,      -- score for taking it
+        holdSeconds = 60,       -- every this long it stays held...
+        holdPoints = 1,         -- ...the holder scores this
+    },
+
+    -- Names in the on-screen feed during raids and wars.
+    killFeed = true,
+
+    -- Stash raid: after a war win, the loser's placed Crew Locker can be
+    -- broken into. A compass arrow, blip and live distance guide the winner in.
     stash = {
         enabled = true,
         lootRadius = 3.0,
@@ -663,43 +706,32 @@ Config.War = {
 }
 
 -- ─────────────────────────────────────────────────────────────
--- Gang medic
--- Unlocked by placing the Medic Station (Feared tier). Lets a member
--- patch up their own crew in the field instead of waiting on EMS.
+-- Street doc
+-- One unlicensed doctor the whole server shares. Crews buy access to him
+-- (the 'medic' unlock in Config.TierUnlocks); only then do their members
+-- see him, find him on the Live Map and get treated. He patches you up,
+-- or brings back a member carried in to him.
 -- ─────────────────────────────────────────────────────────────
 Config.Medic = {
     enabled = true,
-    -- Only members of the same gang can be treated.
-    healCooldownSeconds = 180,     -- per medic
-    reviveCooldownSeconds = 600,   -- per medic
-    healAmount = 50,               -- HP restored
-    reviveHealth = 130,            -- HP the revived player comes back on
-    treatSeconds = 8,
-    requiredItem = 'bandage',      -- leave blank to require nothing
-    consumeItem = true,
-    -- Reviving is the strong one, so by default the patient has to be at
-    -- the station. Healing works anywhere.
-    reviveNeedsStation = true,
-    stationRadius = 25.0,
-
-    -- ONE clinic the whole server shares, not a per-crew placeable. Every
-    -- gang uses the same back alley.
-    --
-    -- coords = nil switches the station off: the prop and blip never
-    -- spawn, and with reviveNeedsStation = true nobody can revive at all.
-    station = {
-        coords = vec3(2457.74, 4980.51, 45.81),
-        heading = 0.0,
-        model = 'prop_medstation_02',    -- '' for no prop at all
-        label = 'Back-Alley Clinic',
-        blip = {
-            enabled = true,
-            sprite = 61,
-            color = 2,
-            scale = 0.7,
-            shortRange = true,
-        },
-    },
+    label = 'Street Doc',
+    pedModel = 's_m_m_doctor_01',
+    -- Where he stands. Staff can move him in the builder (Street doc page),
+    -- which wins over this.
+    location = vec4(2457.74, 4980.51, 45.81, 0.0),
+    -- What he does while he waits. '' to have him just stand there.
+    scenario = 'WORLD_HUMAN_CLIPBOARD',
+    -- How long he takes, start to finish. The full effect lands at the end.
+    treatSeconds = 5,
+    -- What he charges. 0 is free.
+    healPrice = 500,
+    revivePrice = 2500,
+    -- Who pays: 'cash' or 'bank' (the player's own), or 'crew' (the treasury).
+    payFrom = 'cash',
+    -- How close a downed member has to be to him to be brought back.
+    reviveRange = 4.0,
+    -- Between visits, per player.
+    cooldownSeconds = 30,
 }
 
 -- ─────────────────────────────────────────────────────────────
@@ -720,8 +752,6 @@ Config.Radial = {
     actions = {
         graffiti     = { enabled = true,  label = 'Spray Tag',     icon = 'fa-spray-can' },
         garage       = { enabled = true,  label = 'Gang Garage',   icon = 'fa-warehouse' },
-        medic        = { enabled = true,  label = 'Treat Crew',    icon = 'fa-kit-medical' },
-        revive       = { enabled = true,  label = 'Revive Crew',   icon = 'fa-heart-pulse' },
         capture      = { enabled = true,  label = 'Claim Turf',    icon = 'fa-flag' },
         cuff         = { enabled = true,  label = 'Cuff / Uncuff', icon = 'fa-handcuffs' },
         bag          = { enabled = true,  label = 'Bag Head',      icon = 'fa-mask' },
@@ -733,6 +763,10 @@ Config.Radial = {
         slashTyre    = { enabled = true,  label = 'Slash Tyre',    icon = 'fa-screwdriver' },
         tablet       = { enabled = true,  label = 'Open Tablet',   icon = 'fa-tablet-screen-button' },
     },
+    -- The order round the wheel, starting at the top. Staff can rearrange it
+    -- on the Radial page in the builder; anything missing goes on the end.
+    order = { 'graffiti', 'garage', 'capture', 'cuff', 'bag', 'carry',
+        'escort', 'hostage', 'trunk', 'searchRob', 'slashTyre', 'tablet' },
     -- Robbing: what a search turns up off another player.
     rob = {
         cashOnly = false,          -- true = only ever take cash, never items
@@ -813,6 +847,9 @@ Config.Contracts = {
     -- selection rerolls.
     boardSize = 5,
     rotateMinutes = 45,
+    -- A crew that has bought Crew Contracts earns this much more cash and
+    -- rep on every job.
+    dropBonusPct = 15,
     -- Categories shown as filters in the UI.
     categories = {
         { id = 'hit',      label = 'Assassination', icon = 'fa-crosshairs' },
@@ -1090,16 +1127,16 @@ Config.Vault = {
     slots = 50,
     maxWeight = 100000,             -- grams
 
-    -- The vault's prop grows with the Vault Expansion upgrade: a locker,
-    -- a second locker, then a shipping container. Index 1 is the placed
+    -- The vault's prop grows with the Vault Expansion upgrade: a crate, a
+    -- stack of crates, then a shipping container. Index 1 is the placed
     -- vault before any upgrade; after that it follows the upgrade level.
     -- Buying a level re-models whatever the crew already placed.
     --
     -- A model your server does not have prints a line naming it on spawn
     -- and the prop is skipped, so swapping one is a single edit here.
     levelModels = {
-        'prop_toolchest_05',     -- level 0-1: a tall locker
-        'prop_toolchest_01',     -- level 2: a bigger one
+        'prop_mil_crate_01',     -- level 0-1: a crate
+        'prop_boxpile_04a',      -- level 2: a stack of crates
         'prop_container_01a',    -- level 3: a shipping container
     },
 }
@@ -1195,3 +1232,33 @@ Config.Dealer = {
 -- How long since a member's last tablet open before the roster flags them
 -- as inactive (purely visual — doesn't kick or affect anything mechanical).
 Config.GangInactivityDays = 7
+
+-- ─────────────────────────────────────────────────────────────
+-- Rival intel
+-- Everything one crew does to another is remembered for the Rivals app,
+-- and the crew it happens to hears about it straight away: tags on their
+-- walls, work on their blocks, rivals hanging round their HQ, members
+-- taken out, raids and wars.
+-- ─────────────────────────────────────────────────────────────
+Config.Intel = {
+    enabled = true,
+    alertCooldownMinutes = 5,  -- the same alert about the same place only once in this long
+    hqRadius = 60.0,           -- rivals this close to a crew's HQ...
+    hqSeconds = 30,            -- ...for this long get reported
+    alertKills = true,         -- tell a crew when one of theirs is killed by a rival
+    mapPing = true,            -- alerts flash on the map for a minute
+    keepDays = 30,             -- how far back the dossiers go
+}
+
+-- ─────────────────────────────────────────────────────────────
+-- Crew uploads
+-- Crews can send their own logo and their own photos to spray as tags.
+-- Both go to staff first (the Approvals page in the builder); nothing a
+-- crew sends is seen by anyone else until it is approved.
+-- ─────────────────────────────────────────────────────────────
+Config.Approvals = {
+    logos = true,         -- crews can send a logo
+    tags = true,          -- crews can send photos to spray
+    maxPending = 3,       -- waiting at once, per crew, per kind
+    autoApprove = false,  -- true skips staff entirely (not recommended)
+}

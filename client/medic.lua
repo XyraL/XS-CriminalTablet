@@ -1,181 +1,188 @@
 -- ─────────────────────────────────────────────────────────────
--- Gang medic client. Finds the nearest crew member, plays the treatment,
--- and lets the server decide whether it counts.
---
--- Health and the downed state are applied here because only the patient's
--- own client can set them, but nothing is applied until the server has
--- said yes.
---
--- The clinic itself is one fixed spot the whole server shares, spawned
--- from Config.Medic.station rather than placed by a crew.
+-- Street doc client. One doctor the server shares, spawned here only for
+-- players whose crew has bought access, and only while they are near.
+-- Also what happens when you talk to him, and what lands on the patient.
 -- ─────────────────────────────────────────────────────────────
 Medic = {}
 
--- ── the shared clinic ───────────────────────────────────────
-local stationObj = nil
-local stationBlip = nil
+local busy = false
+local doc = nil        -- where he stands, when our crew has him
+local ped = nil
+local prompt = false
 
-local function clearStation()
-    if stationObj and DoesEntityExist(stationObj) then DeleteEntity(stationObj) end
-    if stationBlip and DoesBlipExist(stationBlip) then RemoveBlip(stationBlip) end
-    stationObj, stationBlip = nil, nil
+local function money(n)
+    return n > 0 and ('$%d'):format(n) or 'free'
 end
 
-local function spawnStation()
-    local st = Config.Medic.station
-    if not Config.Medic.enabled or not st or not st.coords then return end
-    clearStation()
-
-    local c = st.coords
-
-    if st.model and st.model ~= '' then
-        if IsModelValid(st.model) then
-            if XSModel.Load(st.model) then
-                stationObj = CreateObject(st.model, c.x, c.y, c.z, false, false, false)
-                SetEntityHeading(stationObj, st.heading or 0.0)
-                FreezeEntityPosition(stationObj, true)
-                SetEntityAsMissionEntity(stationObj, true, true)
-            else
-                print(('^1[XS-CriminalTablet]^0 Config.Medic.station.model "%s" did not load'):format(tostring(st.model)))
-            end
-        else
-            print(('^1[XS-CriminalTablet]^0 Config.Medic.station.model "%s" is not a valid model'):format(tostring(st.model)))
-        end
-    end
-
-    local blip = st.blip or {}
-    if blip.enabled ~= false then
-        stationBlip = AddBlipForCoord(c.x, c.y, c.z)
-        SetBlipSprite(stationBlip, blip.sprite or 61)
-        SetBlipColour(stationBlip, blip.color or 2)
-        SetBlipScale(stationBlip, (blip.scale or 0.7) + 0.0)
-        SetBlipAsShortRange(stationBlip, blip.shortRange ~= false)
-        BeginTextCommandSetBlipName('STRING')
-        AddTextComponentSubstringPlayerName(st.label or 'Clinic')
-        EndTextCommandSetBlipName(stationBlip)
-    end
-
-    -- The station is a landmark, not a menu: standing at it is what
-    -- unlocks reviving, so there is nothing here to click. The tablet
-    -- opens on the Hub the same as anywhere else.
-    if stationObj and XSTarget.Ready() then
-        exports.ox_target:addLocalEntity(stationObj, {
-            {
-                name = 'xs_medic_station',
-                label = 'Open the tablet',
-                icon = 'fas fa-kit-medical',
-                distance = 2.5,
-                onSelect = function() TriggerEvent('XS-CriminalTablet:client:openMedic') end,
-            },
-        })
-    end
-end
-
--- True when the local player is stood close enough for a revive.
-function Medic.AtStation()
-    local st = Config.Medic.station
-    if not st or not st.coords then return false end
-    return #(GetEntityCoords(PlayerPedId()) - st.coords) <= (Config.Medic.stationRadius or 25.0)
-end
-
-CreateThread(function()
-    Wait(1200)
-    spawnStation()
-end)
-
-AddEventHandler('onResourceStop', function(resource)
-    if resource == GetCurrentResourceName() then clearStation() end
-end)
-
-local TREAT_DICT = 'amb@medic@standing@kneel@base'
-local TREAT_ANIM = 'base'
-
--- Nearest other player within range, with their server id.
-local function nearestPlayer(maxDist)
-    local me = PlayerPedId()
-    local myPos = GetEntityCoords(me)
-    local bestPed, bestId, bestDist = nil, nil, maxDist or 4.0
-
-    for _, playerIdx in ipairs(GetActivePlayers()) do
-        local ped = GetPlayerPed(playerIdx)
-        if ped ~= me and DoesEntityExist(ped) then
-            local d = #(myPos - GetEntityCoords(ped))
-            if d < bestDist then
-                bestPed, bestId, bestDist = ped, GetPlayerServerId(playerIdx), d
-            end
-        end
-    end
-    return bestPed, bestId
-end
-
-local function treat(kind)
-    if not Config.Medic.enabled then return end
-
-    local ped, serverId = nearestPlayer(4.0)
-    if not serverId then
-        lib.notify({ description = 'Nobody close enough.', type = 'error' })
-        return
-    end
-
-    if kind == 'revive' and not IsEntityDead(ped) then
-        lib.notify({ description = 'They are already up.', type = 'error' })
-        return
-    end
-    if kind == 'heal' and IsEntityDead(ped) then
-        lib.notify({ description = 'They need a revive, not a patch-up.', type = 'error' })
+local function visit(kind)
+    if busy then return end
+    busy = true
+    local res = lib.callback.await('XS-CriminalTablet:medic:begin', false, kind)
+    if not res or not res.ok then
+        busy = false
+        lib.notify({ description = (res and res.error) or 'He will not see you', type = 'error' })
         return
     end
 
     local finished = XSAnim.Progress({
-        duration = Config.Medic.treatSeconds * 1000,
-        label = kind == 'revive' and 'Reviving...' or 'Patching them up...',
+        duration = res.time,
+        label = kind == 'revive' and ('The doc is working on %s (%s)'):format(res.name or 'them', money(res.price))
+            or ('The doc is patching you up (%s)'):format(money(res.price)),
         useWhileDead = false,
         canCancel = true,
         disable = { move = true, combat = true },
-        anims = { { dict = TREAT_DICT, clip = TREAT_ANIM } },
     })
-    if not finished then return end
+    if not finished then
+        busy = false
+        lib.callback('XS-CriminalTablet:medic:cancel', false, function() end)
+        return
+    end
 
-    local res = lib.callback.await(
-        kind == 'revive' and 'XS-CriminalTablet:medic:revive' or 'XS-CriminalTablet:medic:heal',
-        false, serverId)
-
+    local done = lib.callback.await('XS-CriminalTablet:medic:finish', false)
+    busy = false
     lib.notify({
-        description = (res and res.ok) and (kind == 'revive' and 'They are back up.' or 'Patched up.')
-            or ((res and res.error) or 'That did not work'),
-        type = (res and res.ok) and 'success' or 'error',
+        description = (done and done.ok) and (kind == 'revive' and 'They are back up.' or 'Patched up.')
+            or ((done and done.error) or 'That did not work'),
+        type = (done and done.ok) and 'success' or 'error',
     })
 end
 
-function Medic.Heal() treat('heal') end
-function Medic.Revive() treat('revive') end
+function Medic.Heal() visit('heal') end
+function Medic.Revive() visit('revive') end
 
--- ── applied to the patient ──────────────────────────────────
-RegisterNetEvent('XS-CriminalTablet:client:medicHeal', function(amount)
-    local ped = PlayerPedId()
-    SetEntityHealth(ped, math.min(GetEntityMaxHealth(ped), GetEntityHealth(ped) + (amount or 50)))
-end)
+-- Without ox_target: one prompt, and a menu for the two things he does.
+function Medic.Menu()
+    lib.registerContext({
+        id = 'xs_street_doc',
+        title = 'Street Doc',
+        options = {
+            { title = 'Get patched up', description = money(Config.Medic.healPrice or 0), icon = 'kit-medical', onSelect = Medic.Heal },
+            { title = 'Bring back a downed member', description = money(Config.Medic.revivePrice or 0) .. ' · they have to be with him', icon = 'heart-pulse', onSelect = Medic.Revive },
+        },
+    })
+    lib.showContext('xs_street_doc')
+end
 
-RegisterNetEvent('XS-CriminalTablet:client:medicRevive', function(health)
-    local ped = PlayerPedId()
-    local coords = GetEntityCoords(ped)
+-- ── the doc himself ─────────────────────────────────────────
+local function despawn()
+    if ped and DoesEntityExist(ped) then
+        if XSTarget.Ready() then pcall(function() exports.ox_target:removeLocalEntity(ped) end) end
+        DeleteEntity(ped)
+    end
+    ped = nil
+    if prompt then
+        lib.hideTextUI()
+        prompt = false
+    end
+end
 
-    NetworkResurrectLocalPlayer(coords.x, coords.y, coords.z, GetEntityHeading(ped), true, false)
-    SetEntityHealth(ped, health or 130)
-    ClearPedBloodDamage(ped)
-    ClearPedTasksImmediately(ped)
+local function spawn()
+    local model = Config.Medic.pedModel or 's_m_m_doctor_01'
+    if not IsModelValid(model) or not XSModel.Load(model) then
+        print(('^1[XS-CriminalTablet]^0 street doc model "%s" did not load - set another in Settings > Street doc'):format(tostring(model)))
+        return
+    end
+    -- A spot dropped on the builder map has no height, so find the ground.
+    local z = doc.z
+    local found, gz = GetGroundZFor_3dCoord(doc.x + 0.0, doc.y + 0.0, (z or 1000.0) + 2.0, false)
+    if found then z = gz end
+    ped = CreatePed(4, model, doc.x + 0.0, doc.y + 0.0, (z or 0.0) + 0.0, (doc.h or 0.0) + 0.0, false, false)
+    SetModelAsNoLongerNeeded(model)
+    SetEntityInvincible(ped, true)
+    SetBlockingOfNonTemporaryEvents(ped, true)
+    SetPedCanRagdoll(ped, false)
+    SetPedFleeAttributes(ped, 0, false)
+    FreezeEntityPosition(ped, true)
+    local scenario = Config.Medic.scenario
+    if scenario and scenario ~= '' then TaskStartScenarioInPlace(ped, scenario, 0, true) end
 
-    -- Hand the framework's own downed state back too, where one exists —
-    -- otherwise the player is standing up but still flagged as dead.
-    if GetResourceState('qbx_medical') == 'started' then
-        pcall(function() exports.qbx_medical:revive() end)
-    elseif GetResourceState('hospital') == 'started' then
-        pcall(function() TriggerEvent('hospital:client:Revive') end)
-    else
-        TriggerEvent('hospital:client:Revive')
+    if XSTarget.Ready() then
+        exports.ox_target:addLocalEntity(ped, {
+            { name = 'xs_doc_heal', label = ('Get Patched Up (%s)'):format(money(Config.Medic.healPrice or 0)), icon = 'fas fa-kit-medical', distance = 2.5, onSelect = Medic.Heal },
+            { name = 'xs_doc_revive', label = ('Bring Back A Downed Member (%s)'):format(money(Config.Medic.revivePrice or 0)), icon = 'fas fa-heart-pulse', distance = 2.5, onSelect = Medic.Revive },
+        })
+    end
+end
+
+local function refresh()
+    doc = lib.callback.await('XS-CriminalTablet:medic:where', false)
+    despawn()
+end
+
+CreateThread(function()
+    Wait(3000)
+    refresh()
+    while true do
+        local sleep = 1500
+        if doc and Config.Medic.enabled then
+            local p = GetEntityCoords(PlayerPedId())
+            local dx, dy = p.x - doc.x, p.y - doc.y
+            local d = math.sqrt(dx * dx + dy * dy)
+            if d < 90.0 and not ped then spawn()
+            elseif d > 110.0 and ped then despawn() end
+
+            -- Without ox_target, an [E] prompt and a menu.
+            if ped and not XSTarget.Ready() then
+                if d < 2.5 then
+                    sleep = 0
+                    if not prompt then
+                        lib.showTextUI('[E] Talk to the doc')
+                        prompt = true
+                    end
+                    if IsControlJustReleased(0, 38) then Medic.Menu() end
+                elseif prompt then
+                    lib.hideTextUI()
+                    prompt = false
+                end
+            end
+        elseif ped then
+            despawn()
+        end
+        Wait(sleep)
     end
 end)
 
-RegisterNetEvent('XS-CriminalTablet:client:openMedic', function()
-    TriggerEvent('XS-CriminalTablet:client:openDeviceAt', 'hub')
+RegisterNetEvent('XS-CriminalTablet:client:docUpdate', refresh)
+RegisterNetEvent('XS-CriminalTablet:client:gangIdChanged', refresh)
+RegisterNetEvent('QBCore:Client:OnPlayerLoaded', function() SetTimeout(2500, refresh) end)
+RegisterNetEvent('QBCore:Client:OnPlayerUnload', function()
+    doc = nil
+    despawn()
+end)
+AddEventHandler('onResourceStop', function(resource)
+    if resource == GetCurrentResourceName() then despawn() end
+end)
+
+-- ── applied to the patient ──────────────────────────────────
+-- The medical resource owns the downed state, so it is told first; the ped
+-- itself is put right after, which is the whole job when none is running.
+RegisterNetEvent('XS-CriminalTablet:client:docRevive', function()
+    if GetResourceState('qbx_medical') == 'started' then
+        TriggerEvent('qbx_medical:client:playerRevived')
+    elseif GetResourceState('qb-ambulancejob') == 'started' then
+        TriggerEvent('hospital:client:Revive')
+    elseif GetResourceState('wasabi_ambulance') == 'started' then
+        TriggerEvent('wasabi_ambulance:revive')
+    end
+
+    local ped = PlayerPedId()
+    if IsEntityDead(ped) then
+        local c = GetEntityCoords(ped)
+        NetworkResurrectLocalPlayer(c.x, c.y, c.z, GetEntityHeading(ped), true, false)
+        ped = PlayerPedId()
+    end
+    SetEntityHealth(ped, GetEntityMaxHealth(ped))
+    ClearPedBloodDamage(ped)
+    ClearPedTasksImmediately(ped)
+end)
+
+RegisterNetEvent('XS-CriminalTablet:client:docHeal', function()
+    if GetResourceState('qbx_medical') == 'started' then
+        TriggerEvent('qbx_medical:client:heal', 'full')
+    elseif GetResourceState('qb-ambulancejob') == 'started' then
+        TriggerEvent('hospital:client:HealInjuries', 'full')
+    end
+    local ped = PlayerPedId()
+    SetEntityHealth(ped, GetEntityMaxHealth(ped))
+    ClearPedBloodDamage(ped)
 end)

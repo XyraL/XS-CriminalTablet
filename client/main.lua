@@ -902,7 +902,6 @@ RegisterCommand('checkmodels', function()
     end
     add(Config.Territory.walls.model, 'Territory.walls')
     for i, m in ipairs(Config.Vault.levelModels or {}) do add(m, ('Vault.levelModels[%d]'):format(i)) end
-    add(Config.Medic.station and Config.Medic.station.model, 'Medic.station.model')
     add(Config.Graffiti.anim and Config.Graffiti.anim.prop, 'Graffiti.anim.prop')
     add(Config.Dealer.pedModel, 'Dealer.pedModel')
     add(Config.TestMode.defenderModel, 'TestMode.defenderModel')

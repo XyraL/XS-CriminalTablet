@@ -47,8 +47,16 @@ function Contracts.OnBoard()
     return board
 end
 
-function Contracts.Status()
+function Contracts.DropBonusFor(gangId)
+    local pct = tonumber(Config.Contracts.dropBonusPct) or 0
+    if pct <= 0 or not gangId or not Placeables.Owns(gangId, 'task') then return 0 end
+    return pct
+end
+
+function Contracts.Status(src)
+    local gang = src and Gangs.GetBySource(src)
     return {
+        dropBonusPct = gang and Contracts.DropBonusFor(gang.id) or 0,
         enabled = Config.Contracts.enabled,
         categories = Config.Contracts.categories,
         rotatedAt = rotatedAt,
@@ -68,6 +76,6 @@ CreateThread(function()
     end
 end)
 
-lib.callback.register('XS-CriminalTablet:contracts:getStatus', function()
-    return Contracts.Status()
+lib.callback.register('XS-CriminalTablet:contracts:getStatus', function(src)
+    return Contracts.Status(src)
 end)

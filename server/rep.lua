@@ -124,7 +124,11 @@ RegisterNetEvent('XS-CriminalTablet:server:reportGangKill', function(killerServe
 
     local victimGang = Gangs.GetByCitizen(victimCid)
     local killerGang = Gangs.GetByCitizen(killerCid)
-    if not victimGang or not killerGang or victimGang.id ~= killerGang.id then return end
+    if not victimGang or not killerGang then return end
+    if victimGang.id ~= killerGang.id then
+        if Intel then Intel.Kill(killerServerId, victimSrc, killerGang, victimGang) end
+        return
+    end
 
     -- One death reaches here twice: the damage event in client/war.lua fires
     -- it, and so does the death poll in client/main.lua. Without this the

@@ -43,7 +43,7 @@ end
 
 -- Only offer what's actually possible from where the player is standing.
 local function buildItems()
-    local items = {}
+    local byId = {}
     local cfg = Config.Radial.actions
     local hasTarget = nearestPlayer(3.0) ~= nil
     local hasVehicle = nearestVehicle(5.0) ~= nil
@@ -52,7 +52,7 @@ local function buildItems()
     local function add(id, note, disabled)
         local a = cfg[id]
         if not a or not a.enabled then return end
-        items[#items + 1] = {
+        byId[id] = {
             id = id, label = a.label, icon = a.icon,
             note = note, disabled = disabled or false,
         }
@@ -61,15 +61,6 @@ local function buildItems()
     add('graffiti')
     add('garage', inVehicle and 'Store this one' or 'Pull one out')
     add('capture')
-    add('medic', hasTarget and nil or 'Nobody close', not hasTarget)
-
-    -- Reviving needs the patient at the shared clinic, so say which of the
-    -- two things is missing rather than greying the entry out unexplained.
-    local needsClinic = Config.Medic.reviveNeedsStation
-    local atClinic = (not needsClinic) or Medic.AtStation()
-    add('revive',
-        (not hasTarget) and 'Nobody close' or (atClinic and nil or 'Not at the clinic'),
-        not hasTarget or not atClinic)
     add('cuff', hasTarget and nil or 'Nobody close', not hasTarget)
     add('bag', hasTarget and nil or 'Nobody close', not hasTarget)
     add('carry', hasTarget and nil or 'Nobody close', not hasTarget)
@@ -80,6 +71,14 @@ local function buildItems()
     add('slashTyre', hasVehicle and nil or 'No vehicle close', not hasVehicle)
     add('tablet')
 
+    local items, seen = {}, {}
+    for _, id in ipairs(Config.Radial.order or {}) do
+        if byId[id] and not seen[id] then items[#items + 1] = byId[id]; seen[id] = true end
+    end
+    local rest = {}
+    for id, item in pairs(byId) do if not seen[id] then rest[#rest + 1] = item end end
+    table.sort(rest, function(a, b) return a.id < b.id end)
+    for _, item in ipairs(rest) do items[#items + 1] = item end
     return items
 end
 
@@ -92,9 +91,22 @@ local function closeRadial()
     SendNUIMessage({ action = 'radialClose' })
 end
 
+local WEAPON_KEYS = { 14, 15, 16, 17, 37, 157, 158, 159, 160, 161, 162, 163, 164, 165 }
+
+local function onDutyCop()
+    if GetResourceState('XS-PoliceSystem') == 'started' then
+        local ok, cop = pcall(function() return exports['XS-PoliceSystem']:IsOnDuty() end)
+        if ok and cop ~= nil then return cop == true end
+    end
+    local pd = Framework.GetPlayerData()
+    local job = pd and pd.job
+    return job ~= nil and job.type == 'leo' and job.onduty == true
+end
+
 local function openRadial()
     if radialOpen then closeRadial() return end
     if not Config.Radial.enabled then return end
+    if onDutyCop() then return end
     if carriedBy then
         lib.notify({ description = 'Not right now.', type = 'error' })
         return
@@ -131,6 +143,9 @@ local function openRadial()
             DisableControlAction(0, 264, true)  -- melee 2
             DisableControlAction(0, 331, true)  -- vehicle attack
             DisableControlAction(0, 106, true)  -- vehicle mouse control override
+            -- 1-9 and the scroll wheel drive the wheel, so they must not
+            -- also swap weapons underneath it.
+            for _, c in ipairs(WEAPON_KEYS) do DisableControlAction(0, c, true) end
         end
     end)
     SendNUIMessage({
@@ -303,8 +318,6 @@ local HANDLERS = {
     capture = claimTurf,
     slashTyre = slashTyre,
     trunk = trunkTarget,
-    medic = function() Medic.Heal() end,
-    revive = function() Medic.Revive() end,
     tablet = function() TriggerEvent('XS-CriminalTablet:client:openDeviceFromWorld') end,
     garage = function()
         if GetVehiclePedIsIn(PlayerPedId(), false) ~= 0 then

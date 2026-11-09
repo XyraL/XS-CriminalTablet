@@ -1,0 +1,36 @@
+/* ═══ Field wheel ═══ */
+/* The police wheel's shape and placement: on the right, off the middle of
+   the screen, so the street stays in view while it is up. */
+#radialRoot { position: fixed; inset: 0; z-index: 200; }
+.wh-scrim { position: absolute; inset: 0; }
+.wh { position: absolute; right: 56px; top: 50%; width: 300px; height: 340px; transform: translateY(-46%); }
+.wh.wh-in { animation: whIn .14s ease-out; }
+@keyframes whIn { from { opacity: 0; transform: translateY(-46%) scale(.9); } to { opacity: 1; transform: translateY(-46%); } }
+.wh-ring { position: absolute; left: 0; top: 0; overflow: visible; filter: drop-shadow(0 16px 30px rgba(0,0,0,.55)); }
+.wh-halo { fill: none; stroke: rgba(255,255,255,.05); stroke-width: 1; }
+.ws { cursor: pointer; }
+.ws > path { fill: rgba(14,14,17,.8); stroke: rgba(255,255,255,.07); stroke-width: 1; transition: fill .09s, stroke .09s; }
+.ws .ws-ico { display: flex; align-items: center; justify-content: center; width: 64px; height: 64px; color: #c9c9cf; font-size: 19px; transition: color .09s, transform .09s; pointer-events: none; }
+.ws .ws-ico i { filter: drop-shadow(0 2px 3px rgba(0,0,0,.65)); }
+.ws-num { fill: #5d5d66; font: 700 9px var(--mono); text-anchor: middle; pointer-events: none; }
+.ws-on > path { fill: rgba(var(--acc-rgb), .92); stroke: rgba(255,255,255,.55); }
+.ws-on .ws-ico { color: var(--accent-ink); transform: scale(1.12); }
+.ws-on .ws-num { fill: rgba(255,255,255,.75); }
+.ws-off { cursor: not-allowed; }
+.ws-off .ws-ico { color: #55555d; }
+.ws-off.ws-on > path { fill: rgba(40,40,46,.92); stroke: rgba(var(--b-red-rgb), .55); }
+.ws-off.ws-on .ws-ico { color: #8a8a93; transform: none; }
+.ws-shake { animation: wsShake .3s ease-out; }
+@keyframes wsShake { 20% { transform: translateX(-3px); } 40% { transform: translateX(3px); } 60% { transform: translateX(-2px); } 80% { transform: translateX(2px); } }
+.wh-hub {
+    position: absolute; left: 150px; top: 150px; width: 132px; height: 132px; margin: -66px 0 0 -66px; padding: 10px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+    border: 1px solid rgba(255,255,255,.08); border-radius: 50%; background: rgba(12,12,14,.9); pointer-events: none;
+}
+.wh-crumb { max-width: 112px; margin-bottom: 6px; color: var(--accent-2); font: 700 9.5px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wh-name { max-width: 110px; color: #fff; font: 700 14px/1.15 var(--font); }
+.wh-target { max-width: 116px; margin-top: 6px; color: var(--b-dim); font: 600 10.5px/1.25 var(--mono); }
+.wh-target.bad { color: #ff7a87; }
+.wh-hints { position: absolute; left: -40px; right: -40px; top: 306px; display: flex; justify-content: center; gap: 9px; flex-wrap: wrap; color: #bdbdc4; font: 600 10.5px/1 var(--font); text-shadow: 0 1px 6px rgba(0,0,0,.9); pointer-events: none; }
+.wh-hints span { display: inline-flex; align-items: center; gap: 4px; }
+.wh-hints .kbd { display: inline-flex; align-items: center; height: 18px; padding: 0 6px; border: 1px solid rgba(255,255,255,.14); border-bottom-width: 2px; border-radius: 5px; background: rgba(20,20,24,.92); color: #e6e6ea; font: 700 9.5px/1 var(--mono); font-style: normal; }

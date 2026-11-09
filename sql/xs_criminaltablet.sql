@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS `xs_gangs` (
     `war_losses`    INT             NOT NULL DEFAULT 0,
     `last_active`   BIGINT          NOT NULL DEFAULT 0,
     `perk_points`   INT             NOT NULL DEFAULT 0,
+    `framework_gang` VARCHAR(64)    NULL DEFAULT NULL,
     `raid_cooldown` BIGINT          NOT NULL DEFAULT 0,
     `raid_immune`   BIGINT          NOT NULL DEFAULT 0,
     `war_cooldown`  BIGINT          NOT NULL DEFAULT 0,
@@ -277,6 +278,12 @@ CREATE TABLE IF NOT EXISTS `xs_settings` (
     `svalue`        TEXT            NOT NULL,
     `updated_at`    TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (`scope`, `skey`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `xs_tablet_settings` (
+    `name`          VARCHAR(32)     NOT NULL,
+    `data`          LONGTEXT        NOT NULL,
+    PRIMARY KEY (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS `xs_gang_logs` (

@@ -11,34 +11,33 @@ GangGarage = {}
 
 local outVehicles = {}   -- [plate] = entity, so we know what we put out
 
--- Hand keys over through whichever key resource is running. Anything
--- unrecognised is a no-op and the vehicle just stays unlocked.
-local function giveKeys(vehicle, plate)
-    SetVehicleDoorsLocked(vehicle, 1)
-
-    if GetResourceState('qbx_vehiclekeys') == 'started' then
-        pcall(function() exports.qbx_vehiclekeys:GiveKeys(vehicle, true) end)
-    elseif GetResourceState('qb-vehiclekeys') == 'started' then
-        pcall(function() TriggerEvent('qb-vehiclekeys:client:AddKeys', plate) end)
-    elseif GetResourceState('wasabi_carlock') == 'started' then
-        pcall(function() exports.wasabi_carlock:GiveKey(plate) end)
+local function groundAt(x, y, z)
+    for _, lift in ipairs({ 1.5, 4.0, 10.0 }) do
+        local found, gz = GetGroundZFor_3dCoord(x + 0.0, y + 0.0, z + lift, false)
+        if found then return gz end
     end
+    return z
 end
 
--- A free patch of ground near the garage point, so two people pulling
--- cars out at once don't stack them inside each other.
-local function findSpawnSpot(base)
+-- A free patch of ground beside the garage point, never on it: the point
+-- is a solid prop, and a car spawned inside one gets thrown onto its roof.
+-- Two people pulling cars out at once don't stack them either.
+local function findSpawnSpot(base, heading)
+    local h = math.rad(heading)
+    local fwd = vec3(-math.sin(h), math.cos(h), 0.0)
+    local right = vec3(fwd.y, -fwd.x, 0.0)
     local offsets = {
-        vec3(0.0, 0.0, 0.0), vec3(4.0, 0.0, 0.0), vec3(-4.0, 0.0, 0.0),
-        vec3(0.0, 4.0, 0.0), vec3(0.0, -4.0, 0.0), vec3(4.0, 4.0, 0.0), vec3(-4.0, -4.0, 0.0),
+        fwd * 4.5, fwd * 4.5 + right * 3.5, fwd * 4.5 - right * 3.5,
+        right * 4.5, right * -4.5, fwd * -4.5, fwd * 9.0,
     }
     for _, off in ipairs(offsets) do
         local spot = base + off
-        if IsPositionOccupied(spot.x, spot.y, spot.z, 2.5, false, true, false, false, false, 0, false) == false then
-            return spot
+        if not IsPositionOccupied(spot.x, spot.y, spot.z + 0.5, 2.2, false, true, true, false, false, 0, false) then
+            return vec3(spot.x, spot.y, groundAt(spot.x, spot.y, spot.z))
         end
     end
-    return base
+    local spot = base + fwd * 4.5
+    return vec3(spot.x, spot.y, groundAt(spot.x, spot.y, spot.z))
 end
 
 function GangGarage.Take(vehicleId)
@@ -61,21 +60,35 @@ function GangGarage.Take(vehicleId)
         TriggerServerEvent('XS-CriminalTablet:server:garageReturned', v.plate, v.props)
         return false
     end
-    local base = vec3(v.spawn.x, v.spawn.y, v.spawn.z)
-    local spot = findSpawnSpot(base)
+    local heading = (tonumber(v.spawn.heading) or GetEntityHeading(PlayerPedId())) + 0.0
+    local spot = findSpawnSpot(vec3(v.spawn.x + 0.0, v.spawn.y + 0.0, v.spawn.z + 0.0), heading)
 
-    local vehicle = CreateVehicle(model, spot.x, spot.y, spot.z, GetEntityHeading(PlayerPedId()) + 90.0, true, false)
-    SetVehicleNumberPlateText(vehicle, v.plate)
+    RequestCollisionAtCoord(spot.x, spot.y, spot.z)
+    local vehicle = CreateVehicle(model, spot.x, spot.y, spot.z + 0.5, heading, true, false)
+    for _ = 1, 40 do
+        if HasCollisionLoadedAroundEntity(vehicle) then break end
+        Wait(25)
+    end
+    SetEntityHeading(vehicle, heading)
     SetVehicleOnGroundProperly(vehicle)
     SetEntityAsMissionEntity(vehicle, true, true)
+    SetVehicleHasBeenOwnedByPlayer(vehicle, true)
     SetModelAsNoLongerNeeded(model)
 
     if v.props then pcall(function() lib.setVehicleProperties(vehicle, v.props) end) end
     -- Properties carry the saved plate too; re-apply ours so the DB row
     -- and the car on the street can never disagree.
     SetVehicleNumberPlateText(vehicle, v.plate)
+    SetVehicleDoorsLocked(vehicle, 1)
 
-    if v.giveKeys then giveKeys(vehicle, v.plate) end
+    if Config.Garage.warpIn ~= false then TaskWarpPedIntoVehicle(PlayerPedId(), vehicle, -1) end
+    if v.giveKeys then
+        for _ = 1, 40 do
+            if NetworkGetEntityIsNetworked(vehicle) then break end
+            Wait(25)
+        end
+        TriggerServerEvent('XS-CriminalTablet:server:garageKeys', NetworkGetNetworkIdFromEntity(vehicle), v.plate)
+    end
     outVehicles[v.plate] = vehicle
 
     lib.notify({ description = ('%s is out — plate %s.'):format(v.label, v.plate), type = 'success' })

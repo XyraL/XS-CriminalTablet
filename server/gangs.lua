@@ -76,6 +76,18 @@ function Gangs.GetBySource(src)
     return Gangs.GetByCitizen(Framework.GetCitizenId(src))
 end
 
+-- The rank someone joins on: Config.JoinGrade, or the nearest rank below it
+-- when this crew's ladder has nothing at that grade.
+function Gangs.JoinGrade(gang)
+    local want = tonumber(Config.JoinGrade) or 0
+    local best, lowest
+    for g in pairs(gang.ranks) do
+        if g <= want and (not best or g > best) then best = g end
+        if not lowest or g < lowest then lowest = g end
+    end
+    return best or lowest or 0
+end
+
 function Gangs.MemberCount(gang)
     local count = 0
     for _ in pairs(gang.members) do count = count + 1 end
@@ -176,16 +188,20 @@ function Gangs.HasPerm(src, perm)
 end
 
 -- ── framework gang mirroring ────────────────────────────────
--- Optional: writes membership into the framework's own gang field so
--- other resources can see it. Off unless Config.SyncFrameworkGang.
-local function syncFrameworkGang(src, gang, grade)
-    if not Config.SyncFrameworkGang or not src then return end
-    local player = Framework.GetPlayer(src)
-    if not player or not player.Functions or not player.Functions.SetGang then return end
-    pcall(function()
-        if gang then player.Functions.SetGang(gang.name, grade or 0)
-        else player.Functions.SetGang('none', 0) end
-    end)
+-- Writes membership into the framework's own gang field so other resources
+-- see it. A crew linked to a framework gang always writes back to that gang
+-- so the two never drift; any other crew only with Config.SyncFrameworkGang.
+-- `left` is the crew someone just left, so leaving a linked crew also
+-- takes them out of its framework gang.
+local function syncFrameworkGang(src, gang, grade, left, citizenid)
+    local linked = FrameworkLink and FrameworkLink.NameOf(gang or left)
+    if not linked and not Config.SyncFrameworkGang then return end
+    if not src and not citizenid then return end
+    if gang then
+        Framework.SetGang(src, citizenid, linked or gang.name, grade or 0)
+    else
+        Framework.SetGang(src, citizenid, 'none', 0)
+    end
 end
 
 local function sourceOfCitizen(citizenid)
@@ -197,6 +213,43 @@ local function sourceOfCitizen(citizenid)
 end
 Gangs.SourceOf = sourceOfCitizen
 
+-- ── citizenid repair ─────────────────────────────────────────
+-- Staff-typed citizenids used to be saved as typed. One that differs from
+-- the real one only in case still matched in MySQL, so the player saw their
+-- crew, but never matched in Lua, so every action said no. Runs each start.
+function Gangs.RepairCitizenIds()
+    local members = MySQL.query.await('SELECT gang_id, citizenid FROM xs_gang_members') or {}
+    local owners = MySQL.query.await("SELECT id, owner FROM xs_gangs WHERE owner <> ''") or {}
+    local saved = {}
+    for _, m in ipairs(members) do saved[#saved + 1] = m.citizenid end
+    for _, g in ipairs(owners) do saved[#saved + 1] = g.owner end
+    if #saved == 0 then return end
+
+    local real = {}
+    local rows = MySQL.query.await(('SELECT citizenid FROM players WHERE citizenid IN (%s)'):format(
+        ('?,'):rep(#saved):sub(1, -2)), saved) or {}
+    for _, r in ipairs(rows) do real[r.citizenid:upper()] = r.citizenid end
+
+    local touched = {}
+    for _, m in ipairs(members) do
+        local id = real[m.citizenid:upper()]
+        if id and id ~= m.citizenid then
+            MySQL.update.await('UPDATE xs_gang_members SET citizenid = ? WHERE citizenid = ?', { id, m.citizenid })
+            touched[m.gang_id] = true
+            print(('^3[XS-CriminalTablet]^0 fixed gang member %s -> %s'):format(m.citizenid, id))
+        end
+    end
+    for _, g in ipairs(owners) do
+        local id = real[g.owner:upper()]
+        if id and id ~= g.owner then
+            MySQL.update.await('UPDATE xs_gangs SET owner = ? WHERE id = ?', { id, g.id })
+            touched[g.id] = true
+            print(('^3[XS-CriminalTablet]^0 fixed gang boss %s -> %s'):format(g.owner, id))
+        end
+    end
+    for gangId in pairs(touched) do Gangs._invalidate(gangId) end
+end
+
 -- ── config sync ─────────────────────────────────────────────
 -- Config.Gangs is a first-boot seed only. Everything after that is owned
 -- by the admin tablet.
@@ -204,11 +257,12 @@ function Gangs.SyncFromConfig()
     for name, def in pairs(Config.Gangs) do
         local row = MySQL.single.await('SELECT id FROM xs_gangs WHERE name = ?', { name })
         local gangId
+        local boss = def.boss and def.boss ~= '' and (Framework.ResolveCitizenId(def.boss) or def.boss) or ''
 
         if not row then
             gangId = MySQL.insert.await(
                 'INSERT INTO xs_gangs (name, label, color, owner, last_active) VALUES (?, ?, ?, ?, ?)',
-                { name, def.label or name, def.color or Config.GangColors[1], def.boss or '', now() })
+                { name, def.label or name, def.color or Config.GangColors[1], boss, now() })
             for grade, rank in pairs(Config.DefaultRanks) do
                 MySQL.insert.await(
                     'INSERT INTO xs_gang_ranks (gang_id, grade, name, permissions) VALUES (?, ?, ?, ?)',
@@ -219,7 +273,7 @@ function Gangs.SyncFromConfig()
         else
             gangId = row.id
             MySQL.update('UPDATE xs_gangs SET label = ?, owner = ?, color = ? WHERE id = ?',
-                { def.label or name, def.boss or '', def.color or Config.GangColors[1], gangId })
+                { def.label or name, boss, def.color or Config.GangColors[1], gangId })
         end
 
         if def.territory then
@@ -228,20 +282,20 @@ function Gangs.SyncFromConfig()
         end
 
         -- make sure the boss has a member row at the top grade
-        if def.boss and def.boss ~= '' then
-            local member = MySQL.single.await('SELECT citizenid FROM xs_gang_members WHERE citizenid = ?', { def.boss })
+        if boss ~= '' then
+            local member = MySQL.single.await('SELECT citizenid FROM xs_gang_members WHERE citizenid = ?', { boss })
             local ranks = MySQL.query.await('SELECT grade FROM xs_gang_ranks WHERE gang_id = ?', { gangId }) or {}
             local grades = {}
             for _, r in ipairs(ranks) do grades[r.grade] = true end
             local top = topGradeOf(grades)
             if not member then
-                local bossName = Framework.GetNameByCitizenId(def.boss) or def.boss
+                local bossName = Framework.GetNameByCitizenId(boss) or boss
                 MySQL.insert.await(
                     'INSERT INTO xs_gang_members (gang_id, citizenid, name, grade) VALUES (?, ?, ?, ?)',
-                    { gangId, def.boss, bossName, top })
+                    { gangId, boss, bossName, top })
             else
-                MySQL.update('UPDATE xs_gang_members SET gang_id = ?, grade = ? WHERE citizenid = ?',
-                    { gangId, top, def.boss })
+                MySQL.update('UPDATE xs_gang_members SET citizenid = ?, gang_id = ?, grade = ? WHERE citizenid = ?',
+                    { boss, gangId, top, boss })
             end
         end
 
@@ -282,12 +336,13 @@ function Gangs.AcceptInvite(src)
     if Gangs.MemberCount(gang) >= Gangs.MaxMembers(gang.id) then return false, 'gang is full' end
 
     local name = Framework.GetName(src)
+    local grade = Gangs.JoinGrade(gang)
     MySQL.insert.await(
-        'INSERT INTO xs_gang_members (gang_id, citizenid, name, grade) VALUES (?, ?, ?, 0)',
-        { invite.gangId, cid, name })
+        'INSERT INTO xs_gang_members (gang_id, citizenid, name, grade) VALUES (?, ?, ?, ?)',
+        { invite.gangId, cid, name, grade })
 
     loadGang(invite.gangId)
-    syncFrameworkGang(src, Gangs.Get(invite.gangId), 0)
+    syncFrameworkGang(src, Gangs.Get(invite.gangId), grade)
     Gangs.Log(invite.gangId, ('%s joined the gang'):format(name), 'roster')
     Rep.Add(invite.gangId, Config.Rep.rewards.member_recruited, 'recruit')
     Gangs.Broadcast(invite.gangId, 'roster', {})
@@ -319,8 +374,8 @@ function Gangs.Kick(src, targetCid)
     gang.members[targetCid] = nil
 
     local targetSrc = sourceOfCitizen(targetCid)
+    syncFrameworkGang(targetSrc, nil, nil, gang, targetCid)
     if targetSrc then
-        syncFrameworkGang(targetSrc, nil)
         Framework.Notify(targetSrc, ('You were removed from %s.'):format(gang.label), 'error')
         TriggerClientEvent('XS-CriminalTablet:client:refresh', targetSrc)
     end
@@ -354,8 +409,8 @@ function Gangs.SetGrade(src, targetCid, grade)
     gang.members[targetCid].grade = grade
 
     local targetSrc = sourceOfCitizen(targetCid)
+    syncFrameworkGang(targetSrc, gang, grade, nil, targetCid)
     if targetSrc then
-        syncFrameworkGang(targetSrc, gang, grade)
         Framework.Notify(targetSrc, ('You are now %s.'):format(gang.ranks[grade].name), 'inform')
         TriggerClientEvent('XS-CriminalTablet:client:refresh', targetSrc)
     end
@@ -390,12 +445,12 @@ function Gangs.TransferLeadership(src, targetCid)
     gang.owner = targetCid
 
     local targetSrc = sourceOfCitizen(targetCid)
+    syncFrameworkGang(targetSrc, gang, top, nil, targetCid)
     if targetSrc then
-        syncFrameworkGang(targetSrc, gang, top)
         Framework.Notify(targetSrc, ('You now run %s.'):format(gang.label), 'success')
         TriggerClientEvent('XS-CriminalTablet:client:refresh', targetSrc)
     end
-    syncFrameworkGang(src, gang, second)
+    syncFrameworkGang(src, gang, second, nil, actorCid)
 
     Gangs.Log(gang.id, ('%s handed the crew to %s'):format(
         gang.members[actorCid].name, gang.members[targetCid].name), 'roster')
@@ -415,7 +470,7 @@ function Gangs.Leave(src)
     local name = gang.members[cid] and gang.members[cid].name or cid
     MySQL.update('DELETE FROM xs_gang_members WHERE citizenid = ?', { cid })
     gang.members[cid] = nil
-    syncFrameworkGang(src, nil)
+    syncFrameworkGang(src, nil, nil, gang, cid)
     Gangs.Log(gang.id, ('%s walked away'):format(name), 'roster')
     Gangs.Broadcast(gang.id, 'roster', {})
     return true
@@ -532,6 +587,7 @@ function Gangs.Snapshot(src)
         name = gang.name,
         label = gang.label,
         color = gang.color or Config.GangColors[1],
+        logo = gang.logo,
         motd = gang.motd or '',
         bank = gang.bank,
         rep = gang.notoriety,

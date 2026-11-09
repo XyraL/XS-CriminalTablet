@@ -1,5 +1,54 @@
 # Changelog
 
+## [3.0.0] - 2026-11-09
+
+### Added
+
+- New look for the tablet, with the apps on a bar across the top in your crew's colour
+- The staff panel is now the builder, with search on Ctrl+K
+- Settings page in the builder: 173 settings, live straight away, each with a reset to config.lua
+- Job builder: edit the contract jobs or make your own, and walk out where they happen
+- Crafting and perks page: bench recipes, the perk tree and treasury upgrades
+- Radial page: choose what is on the F6 wheel, rename it and put it in order
+- New F6 wheel look, with number keys to pick an action
+- Link a crew to a framework gang so its members join and leave with it
+- Player search in the builder by name, server ID or citizenid, online or offline
+- Pick the rank when adding a member, and set the rank new members join on
+- Choose what the bottom rank can do in new crews
+- Wars have to be accepted by the other crew; turning it down or not answering means no war
+- Wars have objectives to take and hold
+- Live war and raid scoreboard with a kill feed and a sound when the lead changes
+- Rivals app with a dossier on every other crew
+- Alerts when a rival tags your walls, works your blocks, hangs round your HQ or takes one of you out
+- Crews can send their own logo and their own photos to spray, approved by staff first
+- Crew logos on the Turf page and the map
+- New crafting bench: item pictures, what you are carrying, how many you can make, and build up to 10 at once
+- Street Doc: one doctor staff place for the whole server. Crews buy access, then see him and find him on the Live Map. He patches you up and brings back downed members, for a fee
+- Crew Contracts unlock: 15% more cash and rep on every job, with nothing to place
+- The Crew Locker is now a crate, then a stack of crates, then a container
+- Garage cars put you in the driver's seat
+- Search your items when setting up the dealer, and every vehicle when granting one to a crew
+
+### Removed
+
+- Treat and revive crew from the F6 wheel, and the shared clinic. The Street Doc replaces them
+- The Crew Safe. The Crew Locker does its job now, and crews that bought a safe get the money back
+
+### Fixed
+
+- Fixed players added from the staff panel being unable to use the tablet when their citizenid was typed in a different case. Gangs already set up are fixed when the resource starts
+- Changing a gang's boss checks the character exists
+- On-duty police no longer get the gang radial when they press F6. It shared the key with the XS-PoliceSystem wheel and said they were not in a gang
+- Fixed colours not showing on parts of the tablet in game
+- Fixed garage cars spawning upside down
+- Fixed garage keys with qbx_vehiclekeys and current qb-vehiclekeys
+- Fixed the vehicle list on a crew's garage tab in the builder being empty
+- The Garage Point is a parking meter, not a toolbox. Ones already placed change on restart
+- Fixed the crafting bench being hard to read
+- Builds at the crafting bench always take their full time
+
+Replace everything except your config.lua, then copy across the new TierUnlocks, Medic, Radial actions, Vault, FrameworkLink, Intel, Approvals and JoinGrade sections. No SQL to run.
+
 ## [2.0.3] - 2026-10-30
 
 ### Fixed

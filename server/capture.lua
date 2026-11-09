@@ -78,6 +78,7 @@ function Capture.StateOf(zoneKey)
                 gangId = gangId,
                 gangLabel = gang and gang.label or '?',
                 gangColor = gang and gang.color or '#6b7280',
+                gangLogo = gang and gang.logo or nil,
                 influence = math.floor(pct + 0.5),
             }
         end
@@ -152,7 +153,12 @@ local function alertHolder(zoneKey, z, gang)
     if alerted[key] then return end
     alerted[key] = true
 
-    Gangs.NotifyGang(z.gangId, ('%s is working %s — get down there.'):format(gang.label, z.label), 'error')
+    local message = ('%s is working %s — get down there.'):format(gang.label, z.label)
+    if Intel and Intel.On() then
+        Intel.Event('work', gang.id, z.gangId, { detail = z.label, coords = Territory.CenterOf(zoneKey), key = zoneKey, alert = message })
+    else
+        Gangs.NotifyGang(z.gangId, message, 'error')
+    end
     Discord.Send('war', 'Turf contested',
         ('%s is building influence on %s (held by %s)'):format(
             gang.label, z.label, Gangs.Get(z.gangId) and Gangs.Get(z.gangId).label or '?'),

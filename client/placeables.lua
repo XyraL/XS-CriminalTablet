@@ -28,31 +28,28 @@ local function despawnAll()
     interactive = {}
 end
 
--- What each kind offers when you walk up to it. `mineOnly` entries are
--- hidden from rivals — the server refuses them anyway, so showing them
--- would just be a broken-looking option.
+-- What each kind offers when you walk up to it. `who` is 'mine' for the
+-- crew that placed it and 'rival' for everyone else; the server refuses
+-- the wrong side anyway, so showing it would just be a broken option.
 local INTERACTIONS = {
+    -- The crew's stash. A rival who wins a war breaks into it.
     vault = {
-        label = 'Open Gang Vault', icon = 'fas fa-vault', mineOnly = true,
-        run = function() TriggerServerEvent('XS-CriminalTablet:server:openVault') end,
+        { label = 'Open Crew Locker', icon = 'fas fa-box-open', who = 'mine',
+          run = function() TriggerServerEvent('XS-CriminalTablet:server:openVault') end },
+        { label = 'Break Into The Locker', icon = 'fas fa-sack-dollar', who = 'rival',
+          run = function(p) TriggerEvent('XS-CriminalTablet:client:tryLootStash', vec3(p.x, p.y, p.z)) end },
     },
     bench = {
-        label = 'Use Workbench', icon = 'fas fa-screwdriver-wrench', mineOnly = true,
-        run = function(p) TriggerEvent('XS-CriminalTablet:client:openCraftBench', p.label, vec3(p.x, p.y, p.z)) end,
+        { label = 'Use Workbench', icon = 'fas fa-screwdriver-wrench', who = 'mine',
+          run = function(p) TriggerEvent('XS-CriminalTablet:client:openCraftBench', p.label, vec3(p.x, p.y, p.z)) end },
     },
     garage = {
-        label = 'Gang Garage', icon = 'fas fa-warehouse', mineOnly = true,
-        run = function() TriggerEvent('XS-CriminalTablet:client:openGarage') end,
+        { label = 'Gang Garage', icon = 'fas fa-warehouse', who = 'mine',
+          run = function() TriggerEvent('XS-CriminalTablet:client:openGarage') end },
     },
     hq = {
-        label = 'Crew HQ', icon = 'fas fa-satellite-dish', mineOnly = true,
-        run = function() TriggerEvent('XS-CriminalTablet:client:openDeviceFromWorld') end,
-    },
-    -- The safe is the one thing a RIVAL is meant to walk up to, during a
-    -- stash-raid window. Own crew gets nothing from it.
-    safe = {
-        label = 'Crack The Safe', icon = 'fas fa-sack-dollar', mineOnly = false,
-        run = function(p) TriggerEvent('XS-CriminalTablet:client:tryLootStash', vec3(p.x, p.y, p.z)) end,
+        { label = 'Crew HQ', icon = 'fas fa-satellite-dish', who = 'mine',
+          run = function() TriggerEvent('XS-CriminalTablet:client:openDeviceFromWorld') end },
     },
 }
 
@@ -82,28 +79,31 @@ local function spawnOne(p)
         return
     end
 
-    local handle = CreateObject(p.model, p.x, p.y, p.z, false, false, false)
-    SetEntityHeading(handle, p.heading)
+    local handle = CreateObject(p.model, p.x + 0.0, p.y + 0.0, p.z + 0.0, false, false, false)
+    SetEntityHeading(handle, (p.heading or 0.0) + 0.0)
     FreezeEntityPosition(handle, true)
     spawned[placementKey(p)] = handle
 
-    local def = INTERACTIONS[p.kind]
-    if not def then return end
-    if def.mineOnly and not isMine(p) then return end
-    if not def.mineOnly and isMine(p) then return end
-
-    if hasTarget() then
-        exports.ox_target:addLocalEntity(handle, {
-            {
-                name = 'xs_place_' .. p.kind,
+    local side = isMine(p) and 'mine' or 'rival'
+    local options, defs = {}, {}
+    for i, def in ipairs(INTERACTIONS[p.kind] or {}) do
+        if def.who == side then
+            options[#options + 1] = {
+                name = ('xs_place_%s_%d'):format(p.kind, i),
                 label = def.label,
                 icon = def.icon,
                 distance = 2.5,
                 onSelect = function() def.run(p) end,
-            },
-        })
+            }
+            defs[#defs + 1] = def
+        end
+    end
+    if #options == 0 then return end
+
+    if hasTarget() then
+        exports.ox_target:addLocalEntity(handle, options)
     else
-        interactive[placementKey(p)] = { row = p, def = def }
+        interactive[placementKey(p)] = { row = p, def = defs[1] }
     end
 end
 
@@ -187,6 +187,10 @@ function Placeables.StartPlacement(unlockId)
     local def = Placeables.ResolveUnlock(unlockId)
     if not def then
         lib.notify({ description = 'Unknown unlock.', type = 'error' })
+        return
+    end
+    if def.placeable == false or def.kind == 'task' or def.kind == 'medic' then
+        lib.notify({ description = ('%s works as soon as it is bought. There is nothing to place.'):format(def.label), type = 'inform' })
         return
     end
     if not IsModelValid(def.model) then

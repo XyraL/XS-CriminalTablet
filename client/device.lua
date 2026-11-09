@@ -179,6 +179,9 @@ local allowed = {
     ['XS-CriminalTablet:war:getOverview'] = true,
     ['XS-CriminalTablet:war:startRaid']   = true,
     ['XS-CriminalTablet:war:declare']     = true,
+    ['XS-CriminalTablet:war:respond']     = true,
+    ['XS-CriminalTablet:medic:where']     = true,
+    ['XS-CriminalTablet:war:cancelRequest'] = true,
     ['XS-CriminalTablet:war:getState']    = true,
     -- garage
     ['XS-CriminalTablet:garage:list']   = true,
@@ -189,7 +192,6 @@ local allowed = {
     ['XS-CriminalTablet:graffiti:deleteArt']  = true,
     ['XS-CriminalTablet:graffiti:remove']     = true,
     -- medic
-    ['XS-CriminalTablet:medic:getStatus'] = true,
     -- contracts
     ['XS-CriminalTablet:contracts:getStatus']    = true,
     ['XS-CriminalTablet:tasks:getAvailable']     = true,
@@ -203,8 +205,14 @@ local allowed = {
     ['XS-CriminalTablet:tasks:inviteCoop']       = true,
     ['XS-CriminalTablet:tasks:cancelCrew']       = true,
     ['XS-CriminalTablet:tasks:acceptCoop']       = true,
-    -- standing
+    -- standing and rivals
     ['XS-CriminalTablet:analytics:getStandings'] = true,
+    ['XS-CriminalTablet:intel:rivals']           = true,
+    ['XS-CriminalTablet:intel:dossier']          = true,
+    -- crew uploads
+    ['XS-CriminalTablet:approvals:mine']         = true,
+    ['XS-CriminalTablet:approvals:submit']       = true,
+    ['XS-CriminalTablet:approvals:removeLogo']   = true,
     -- dealer + blackmarket
     ['XS-CriminalTablet:dealer:getStatus']     = true,
     ['XS-CriminalTablet:dealer:contact']       = true,

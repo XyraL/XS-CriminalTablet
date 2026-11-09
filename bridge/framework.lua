@@ -78,6 +78,58 @@ if IS_SERVER then
         return ('%s %s'):format(ci.firstname, ci.lastname)
     end
 
+    -- A typed citizenid as the framework actually stored it, or nil. MySQL
+    -- ignores case here, so "abc12345" finds "ABC12345" in the database but
+    -- never matches the player in Lua. Save what this returns, not the input.
+    function Framework.ResolveCitizenId(citizenid)
+        local typed = tostring(citizenid or ''):gsub('%s', '')
+        if typed == '' then return nil end
+        local row = MySQL.single.await('SELECT citizenid FROM players WHERE citizenid = ?', { typed })
+        return row and row.citizenid or nil
+    end
+
+    -- The framework's own gang list as { name, label, grades = { [level] = name } }.
+    function Framework.GetGangs()
+        local raw
+        if Framework.name == 'qbox' then
+            local ok, gangs = pcall(function() return exports.qbx_core:GetGangs() end)
+            raw = ok and gangs or nil
+        elseif Framework.core and Framework.core.Shared then
+            raw = Framework.core.Shared.Gangs
+        end
+        local out = {}
+        for name, g in pairs(type(raw) == 'table' and raw or {}) do
+            if name ~= 'none' then
+                local grades = {}
+                for level, grade in pairs(g.grades or {}) do grades[tonumber(level) or level] = grade.name or tostring(level) end
+                out[#out + 1] = { name = name, label = g.label or name, grades = grades }
+            end
+        end
+        table.sort(out, function(a, b) return a.label < b.label end)
+        return out
+    end
+
+    -- Put an online player in a framework gang ('none' takes them out).
+    -- Offline players can only be changed on QBox.
+    function Framework.SetGang(src, citizenid, name, grade)
+        local player = src and Framework.GetPlayer(src)
+        if player and player.Functions and player.Functions.SetGang then
+            return pcall(player.Functions.SetGang, name, grade or 0)
+        end
+        if Framework.name == 'qbox' and citizenid then
+            return pcall(function()
+                if name == 'none' then
+                    local row = MySQL.single.await('SELECT gang FROM players WHERE citizenid = ?', { citizenid })
+                    local g = row and (type(row.gang) == 'string' and json.decode(row.gang) or row.gang)
+                    if g and g.name and g.name ~= 'none' then exports.qbx_core:RemovePlayerFromGang(citizenid, g.name) end
+                else
+                    exports.qbx_core:AddPlayerToGang(citizenid, name, grade or 0)
+                end
+            end)
+        end
+        return false
+    end
+
     -- Money: account is 'cash' | 'bank'. Both frameworks share this API
     -- surface via the player object's Functions table.
     function Framework.AddMoney(src, account, amount, reason)

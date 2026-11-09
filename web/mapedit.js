@@ -693,9 +693,11 @@
             list.innerHTML = '<div class="empty"><i class="fas fa-box-open"></i>Nothing in the pool — he turns up empty-handed.</div>';
             return;
         }
+        const pics = {};
+        (dealer.items || []).forEach((i) => { if (i.image) pics[i.name] = i.image; });
         list.innerHTML = pool.map((e) => `
             <div class="tile compact">
-                <span class="tile-avatar"><i class="fas fa-box"></i></span>
+                <span class="tile-avatar">${pics[e.item] ? `<img src="${escapeHtml(pics[e.item])}" alt="" style="width:100%;height:100%;object-fit:contain">` : '<i class="fas fa-box"></i>'}</span>
                 <div class="tile-main">
                     <span class="tile-name">${escapeHtml(e.label || e.item)}</span>
                     <span class="tile-sub" style="font-family:var(--mono)">${escapeHtml(e.item)}</span>
@@ -742,6 +744,19 @@
         });
     }
 
+    let dlAutoLabel = '';
+    window.XSList($('#dlItem'), {
+        icon: 'fa-box',
+        options: () => (dealer.items || []).map((i) => ({ value: i.name, label: i.label, image: i.image })),
+        onPick: (o) => {
+            const label = $('#dlLabel');
+            if (!label.value.trim() || label.value === dlAutoLabel) {
+                label.value = o.label || '';
+                dlAutoLabel = label.value;
+            }
+        },
+    });
+
     $('#dlAddItem').onclick = async () => {
         const item = $('#dlItem').value.trim();
         if (!item) return toast('Needs an item name.', 'error');
@@ -750,6 +765,7 @@
         if (report(res, 'Added to the pool.')) {
             $('#dlItem').value = '';
             $('#dlLabel').value = '';
+            dlAutoLabel = '';
             refreshDealer();
         }
     };
@@ -803,6 +819,59 @@
         refreshDealer();
     };
 
+    // ═══ STREET DOC ═══
+    let doc = { location: null, crews: [] };
+    let docArmed = false;
+
+    async function refreshDoc() {
+        doc = await acall('XS-CriminalTablet:admin:docState') || doc;
+        const l = doc.location;
+        $('#docNote').textContent = !doc.enabled ? 'switched off in Settings'
+            : l ? `${Math.round(l.x)}, ${Math.round(l.y)}${doc.fromConfig ? ' · from config.lua' : ''}` : 'not set';
+        const crews = doc.crews || [];
+        $('#docCrews').innerHTML = crews.length ? crews.map((c) => `
+            <div class="tile compact">
+                <span class="tile-avatar" style="background:${escapeHtml(c.color || '#4b5563')}">${escapeHtml(initials(c.label))}</span>
+                <div class="tile-main"><span class="tile-name">${escapeHtml(c.label)}</span></div>
+            </div>`).join('') : '<div class="empty"><i class="fas fa-user-doctor"></i>No crew has bought him yet.</div>';
+        if (ensureMap('docMap', 'doc')) paintDocMap();
+    }
+
+    function paintDocMap() {
+        const entry = mapOf('doc');
+        if (!entry) return;
+        entry.layer.clearLayers();
+        const l = doc.location;
+        if (!l) return;
+        L.marker(mapLatLng(entry.map, l.x, l.y), {
+            icon: L.divIcon({ className: 'map-doc', html: '<i class="fas fa-kit-medical"></i>', iconSize: [26, 26], iconAnchor: [13, 13] }),
+        }).bindTooltip(`<div class="map-tip"><div class="mt-head">Street Doc</div><div class="mt-sub">${Math.round(l.x)}, ${Math.round(l.y)}</div></div>`,
+            { direction: 'top', className: 'map-tip-wrap' }).addTo(entry.layer);
+    }
+
+    $('#docHere').onclick = async () => {
+        if (report(await acall('XS-CriminalTablet:admin:docSetHere'), 'He stands where you are now.')) refreshDoc();
+    };
+    $('#docReset').onclick = async () => {
+        if (report(await acall('XS-CriminalTablet:admin:docReset'), 'Back to config.lua.')) refreshDoc();
+    };
+    $('#docArm').onclick = () => {
+        docArmed = true;
+        const entry = mapOf('doc');
+        if (entry && !entry.wiredDoc) {
+            entry.wiredDoc = true;
+            entry.map.on('click', async (ev) => {
+                if (!docArmed) return;
+                docArmed = false;
+                $('#docMapHint').classList.add('hidden');
+                const world = mapWorld(entry.map, ev.latlng);
+                if (report(await acall('XS-CriminalTablet:admin:docSet', { x: world.x, y: world.y }), 'Moved.')) refreshDoc();
+            });
+        }
+        $('#docMapHint').classList.remove('hidden');
+        toast('Click the map.', 'info');
+    };
+
     // ── entry points admin.js calls when its tabs open ──
     window.XSMapEdit = {
         refresh,
@@ -811,6 +880,7 @@
             if (tab === 'admin-blips') { refresh(); }
             if (tab === 'admin-setup') { refresh(); renderSteps(); showStep(wiz.step); }
             if (tab === 'admin-dealer-setup') { refreshDealer(); }
+            if (tab === 'admin-doc') { refreshDoc(); }
         },
         init() {
             fillSwatches();

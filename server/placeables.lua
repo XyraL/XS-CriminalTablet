@@ -14,13 +14,57 @@ local byGangKind = {}
 
 local function key(kind, unlockId) return kind .. ':' .. unlockId end
 
+-- Crew Contracts is bought, never placed, even from an older config.lua.
+local function isPlaceable(def)
+    return def ~= nil and def.placeable ~= false and def.kind ~= 'task' and def.kind ~= 'medic'
+end
+Placeables.IsPlaceable = isPlaceable
+
+-- Lockers placed before the crate models keep their upgrade level.
+local OLD_VAULT_MODELS = { prop_toolchest_05 = 1, prop_toolchest_01 = 2 }
+
 local function loadAll()
-    rows = MySQL.query.await('SELECT * FROM xs_gang_placements') or {}
+    local all = MySQL.query.await('SELECT * FROM xs_gang_placements') or {}
+    rows = {}
     byGangKind = {}
-    for _, r in ipairs(rows) do
-        byGangKind[r.gang_id] = byGangKind[r.gang_id] or {}
-        byGangKind[r.gang_id][key(r.kind, r.unlock_id)] = r
+    for _, r in ipairs(all) do
+        -- A model changed in config.lua reaches props that are already
+        -- placed. The vault's model follows its upgrade level instead.
+        local def = Placeables.FindUnlockDef and Placeables.FindUnlockDef(r.unlock_id)
+        local model = r.kind ~= 'vault' and def and def.model
+        if r.kind == 'vault' and OLD_VAULT_MODELS[r.model] then
+            model = (Config.Vault.levelModels or {})[OLD_VAULT_MODELS[r.model]]
+        end
+        if model and model ~= r.model then
+            r.model = model
+            MySQL.update('UPDATE xs_gang_placements SET model = ? WHERE id = ?', { model, r.id })
+        end
+        if r.kind ~= 'safe' and r.kind ~= 'task' and r.kind ~= 'medic' and not (def and not isPlaceable(def)) then
+            rows[#rows + 1] = r
+            byGangKind[r.gang_id] = byGangKind[r.gang_id] or {}
+            byGangKind[r.gang_id][key(r.kind, r.unlock_id)] = r
+        end
     end
+end
+
+-- The Crew Safe is gone (the Crew Locker does its job) and Crew Contracts
+-- is no longer placed. Crews that bought the safe get what they paid back.
+local function retireOld()
+    for _, r in ipairs(MySQL.query.await("SELECT gang_id, paid FROM xs_gang_unlocks WHERE unlock_id = 'gang_safe'") or {}) do
+        local paid = math.floor(tonumber(r.paid) or 0)
+        if paid > 0 then
+            MySQL.update.await('UPDATE xs_gangs SET bank = bank + ? WHERE id = ?', { paid, r.gang_id })
+            MySQL.insert('INSERT INTO xs_gang_bank_log (gang_id, citizenid, name, kind, amount) VALUES (?, ?, ?, ?, ?)',
+                { r.gang_id, '', 'Crew Safe refunded', 'refund', paid })
+            local g = Gangs.Get(r.gang_id)
+            if g then g.bank = (g.bank or 0) + paid end
+        end
+        print(('^3[XS-CriminalTablet]^0 Crew Safe retired for gang #%s, $%d refunded'):format(r.gang_id, paid))
+    end
+    MySQL.update.await("DELETE FROM xs_gang_unlocks WHERE unlock_id = 'gang_safe'")
+    MySQL.update.await("DELETE FROM xs_gang_placements WHERE kind = 'safe'")
+    MySQL.update.await("DELETE FROM xs_gang_placements WHERE kind = 'task'")
+    MySQL.update.await("DELETE FROM xs_gang_placements WHERE kind = 'medic'")
 end
 
 function Placeables.GetAll() return rows end
@@ -93,6 +137,21 @@ local function loadBought()
     end
 end
 
+-- True when the crew has bought (or been given free) an unlock of this kind
+-- and its tier is still within reach.
+function Placeables.Owns(gangId, kind)
+    local gang = Gangs.Get(gangId)
+    if not gang then return false end
+    local mods = Gangs.Modifiers(gangId) or {}
+    local reach = tierIndex(Rep.Tier(gang.notoriety)) + (mods.tierBoost or 0)
+    for i, tier in ipairs(Config.Rep.tiers) do
+        for _, u in ipairs(Config.TierUnlocks[tier.name] or {}) do
+            if u.kind == kind and i <= reach and Placeables.HasBought(gangId, u.id) then return true end
+        end
+    end
+    return false
+end
+
 function Placeables.HasBought(gangId, unlockId)
     -- A free unlock never needs buying, so it is always "owned".
     if Prices.UnlockPrice(unlockId) <= 0 then return true end
@@ -105,7 +164,7 @@ function Placeables.Buy(src, unlockId)
     if not gang then return false, 'no gang' end
 
     local def, requiredTier = findUnlockDef(unlockId)
-    if not def then return false, 'unknown unlock' end
+    if not def or def.kind == 'safe' then return false, 'unknown unlock' end
 
     local mods = Gangs.Modifiers(gang.id)
     if tierIndex(Rep.Tier(gang.notoriety)) + (mods.tierBoost or 0) < tierIndex(requiredTier.name) then
@@ -136,6 +195,9 @@ function Placeables.Buy(src, unlockId)
         Framework.GetName(src) or 'Someone', def.label, price), 'economy')
     Discord.Send('economy', 'Unlock bought', ('%s — %s ($%d)'):format(gang.label, def.label, price), Discord.Color.info)
     Gangs.Broadcast(gang.id, 'treasury', {})
+    if def.kind == 'medic' and Medic then
+        for _, s in ipairs(Gangs.OnlineSources(gang.id)) do Medic.Refresh(s) end
+    end
     return true
 end
 
@@ -147,6 +209,7 @@ function Placeables.Place(src, unlockId, coords, heading)
 
     local def, requiredTier = findUnlockDef(unlockId)
     if not def then return false, 'unknown unlock' end
+    if not isPlaceable(def) then return false, 'that one has nothing to place' end
 
     local mods = Gangs.Modifiers(gang.id)
     local effectiveTier = tierIndex(Rep.Tier(gang.notoriety)) + (mods.tierBoost or 0)
@@ -211,6 +274,7 @@ function Placeables.GetAvailable(src)
     local list = {}
     for i, tier in ipairs(Config.Rep.tiers) do
         for _, u in ipairs(Config.TierUnlocks[tier.name] or {}) do
+            if u.kind == 'safe' then goto continue end
             local placed = placedFor[key(u.kind, u.id)]
             local price = Prices.UnlockPrice(u.id)
             local owned = Placeables.HasBought(gang.id, u.id)
@@ -220,6 +284,11 @@ function Placeables.GetAvailable(src)
                 label = u.label,
                 model = u.model,
                 placed = placed ~= nil,
+                placeable = isPlaceable(u),
+                where = u.kind == 'medic' and owned and Medic and Medic.Location() or nil,
+                note = u.kind == 'task' and ('+%d%% cash and rep on every contract'):format(tonumber(Config.Contracts.dropBonusPct) or 0)
+                    or (u.kind == 'medic' and ('One doctor every crew shares. Once bought he shows on your Live Map: $%d to patch you up, $%d to bring back the downed.'):format(Config.Medic.healPrice or 0, Config.Medic.revivePrice or 0))
+                    or nil,
                 coords = placed and { x = placed.x, y = placed.y, z = placed.z } or nil,
                 locked = i > effectiveTierIdx,
                 price = price,
@@ -229,6 +298,7 @@ function Placeables.GetAvailable(src)
                 tierRep = tier.min,
                 tierIndex = i,
             }
+            ::continue::
         end
     end
 
@@ -249,6 +319,8 @@ end
 
 CreateThread(function()
     Wait(2000)
+    local ok, err = pcall(retireOld)
+    if not ok then print('^1[XS-CriminalTablet]^0 could not retire the Crew Safe: ' .. tostring(err)) end
     loadAll()
     loadBought()
 end)
@@ -270,6 +342,7 @@ function Placeables.AdminPlace(gangId, unlockId, coords, heading)
 
     local def = findUnlockDef(unlockId)
     if not def then return false, 'unknown unlock' end
+    if not isPlaceable(def) then return false, 'that one has nothing to place' end
     if type(coords) ~= 'table' or not tonumber(coords.x) or not tonumber(coords.y) then
         return false, 'needs a position'
     end
@@ -310,10 +383,10 @@ function Placeables.CatalogueAll()
     local list = {}
     for tier, defs in pairs(Config.TierUnlocks) do
         for _, def in ipairs(defs) do
-            list[#list + 1] = {
+            if isPlaceable(def) and def.kind ~= 'safe' then list[#list + 1] = {
                 id = def.id, kind = def.kind, label = def.label,
                 model = def.model, tier = tier,
-            }
+            } end
         end
     end
     table.sort(list, function(a, b) return a.label < b.label end)

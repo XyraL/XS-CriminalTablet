@@ -117,6 +117,13 @@ function Territory.HeldBy(gangId)
     return list
 end
 
+-- The middle of a block on the ground, for anything placed "on" it.
+function Territory.CenterOf(zone)
+    local z = zones[zone]
+    if not z or not z.coords then return nil end
+    return vec3(z.coords.x + 0.0, z.coords.y + 0.0, (z.coords.z or 30.0) + 0.0)
+end
+
 function Territory.CountHeldBy(gangId)
     local n = 0
     for _, z in pairs(zones) do
@@ -144,6 +151,7 @@ local function serialize(key, z)
         holder = gang and gang.label or nil,
         holderId = z.gangId,
         holderColor = gang and gang.color or nil,
+        holderLogo = gang and gang.logo or nil,
         holderTier = gang and Rep.Tier(gang.notoriety) or nil,
         influence = Capture and Capture.StateOf(key) or nil,
     }

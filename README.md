@@ -26,8 +26,8 @@
 - `ox_lib`
 - `oxmysql`
 - `ox_inventory` (vault, garage items, the device item)
-- `ox_target` (optional) — gives the vault, benches, garage point and medic
-  station a proper interaction. Falls back to an `[E]` prompt without it.
+- `ox_target` (optional) — gives the locker, benches, garage point and street
+  doc a proper interaction. Falls back to an `[E]` prompt without it.
 - Either `qbx_core` **or** `qb-core` — the bridge auto-detects which.
 
 ## Nothing is pre-made
@@ -60,8 +60,8 @@ sample data is worse than starting clean.
    ['meth_brick'] = { label = 'Meth Brick',    weight = 1000, stack = true },
    ```
 
-   The graffiti, medic and radial systems also want `spraycan`, `bandage` and
-   `handcuffs` — rename them in config if yours are called something else.
+   The graffiti and radial systems also want `spraycan` and `handcuffs` —
+   rename them in config if yours are called something else.
 
    **Images.** The four items above ship in `inventory_images/`. Copy them into
    your inventory's image folder:
@@ -74,8 +74,8 @@ sample data is worse than starting clean.
    - core_inventory → `core_inventory/html/img/`
 
    If yours is not listed, put them wherever its existing item PNGs already
-   live. Restart the inventory resource afterwards. `spraycan`, `bandage` and
-   `handcuffs` are your server's own items and keep the images they have.
+   live. Restart the inventory resource afterwards. `spraycan` and `handcuffs`
+   are your server's own items and keep the images they have.
 4. `ensure XS-CriminalTablet` in `server.cfg`, after ox_lib, oxmysql, your
    framework and ox_inventory.
 5. Grant yourself staff access:
@@ -105,19 +105,9 @@ rival working your turf, a war starting, perk points sitting unspent. A live
 tactical map of where everyone actually is right now sits on its own tab, and
 the property tab is where you place everything the crew has unlocked.
 
-**Staff console** — `/admintablet`. "New Crew" walks gang creation in six
-steps: identity, boss, size and treasury, their first block drawn on the
-satellite map, their property dropped on it, then a review. Nothing is written
-until the last button.
-
-The Dealer Setup tab holds his stock pool, every spot he can turn up at
-(drop them on the map or from where you're stood) and the timings. All of it
-lives in the database and overrides config.lua the moment you change it.
-
-The Turf tab is a full map editor — click corners to draw a zone's real
-polygon, undo, set the ground height, and see every zone, placement and blip
-on one map. The Blips tab makes crew map markers, either crew-only or on
-everyone's map.
+**Builder** — `/admintablet` for staff. Everything about the tablet is set up
+here in game, not in config.lua: crews, turf, jobs, crafting and perks, the
+F6 wheel, prices, the dealer and 173 settings. See [Builder](#builder).
 
 **Roster** — invite, promote, demote, kick, hand over the crew. Top
 contributors, inactivity flags, live online status. The Ranks tab is the rank
@@ -129,7 +119,8 @@ Shows what you're standing on, whose block it is, and how the share is split if
 a rival is working it.
 
 **War Room** — every rival crew with enough intel to pick a target. Raid one,
-declare war on one, and watch the meter. Post-war stash windows show up here.
+ask one for a war, answer crews asking you, and watch the meter. Post-war stash
+windows show up here.
 
 **Contracts** — a rotating board of jobs with categories, a difficulty rating
 and cash on top of rep. Co-op crews, badges, a crew leaderboard, and the
@@ -138,13 +129,32 @@ dealer call button.
 Turf is deliberately invisible outside the tablet: no zone circles on the
 pause map, no crew markers. `Config.Territory.worldBlips` puts them back.
 
-**Medic** — one clinic the whole server shares. Set `Config.Medic.station.coords`
-to a vector and the prop and blip spawn there for everyone. Healing works
-anywhere; reviving needs the patient at the clinic. Crews can still only treat
-their own members.
+**Street Doc** — one unlicensed doctor the whole server shares, standing where
+staff put him (builder → Street doc). Crews buy access at Feared; only then do
+they see him in the world and on their Live Map. He patches you up, or brings
+back a downed member someone carries in to him. Prices, who pays (cash, bank or
+the treasury) and how long he takes are in Settings → Street doc. He tells
+qbx_medical, qb-ambulancejob or wasabi_ambulance, whichever you run.
 
-**Garage** — shared gang vehicles. Take one out at the placed garage point,
-put it back, scrap it. Bays scale with the Garage Expansion upgrade.
+**Garage** — shared gang vehicles. Take one out at the placed garage point
+and it comes out beside it with you at the wheel and the keys in your pocket;
+put it back, scrap it. Bays scale with the Garage Expansion upgrade. Keys work
+with qbx_vehiclekeys, qb-vehiclekeys, wasabi_carlock, Renewed-Vehiclekeys,
+qs-vehiclekeys, mk_vehiclekeys, cd_garage, okokGarage, t1ger_keys and
+vehicles_keys (`Config.Garage.keys`).
+
+**Crafting bench** — every recipe with its item pictures, what you are
+carrying, how many you can make and which tier unlocks the rest. Build up to
+10 at once; the time is kept on the server. Crew perks for faster builds and
+double output show at the top.
+
+**Crew Locker** — the crew's shared stash, a crate that grows into a stack of
+crates and then a shipping container with the Vault Expansion upgrade. Lose a
+war and the winner can break into it during the stash window.
+
+**Crew Contracts** — an unlock with nothing to place. Once bought, the crew
+earns `Config.Contracts.dropBonusPct` (15% by default) more cash and rep on
+every job.
 
 **Studio** — the graffiti library, plus text and freehand composers.
 
@@ -152,6 +162,10 @@ put it back, scrap it. Bays scale with the Garage Expansion upgrade.
 upgrades and the perk tree.
 
 **Standing** — every crew on the server ranked side by side.
+
+**Rivals** — every other crew, what they have done to you lately, and a
+dossier on each: wars, raids and kills both ways, the faces you have run into,
+the blocks they hold and a timeline of everything between you.
 
 **Blackmarket** — anonymous world chat and handle-addressed DMs.
 
@@ -214,15 +228,29 @@ and one of their zones too, if you switch `captureZoneOnWin` back on.
 Contested ground bleeds the hold back down rather than resetting it, so
 defenders have to actually push.
 
+**War requests** — a war only starts when the other crew accepts. Pressing War
+sends them a request; their boss, or a rank that can declare war, accepts or
+turns it down in the War Room. Turning it down or letting it run out means no
+war and no cost, and the asking crew has to wait before asking them again.
+Nothing is charged until they accept. Raids never ask.
+
 **War** — longer, two-sided, and scored on kills between the two crews. First
 to lead by `scoreToWin` wins, or whoever is ahead when the clock runs out.
 Killing the same person over and over stops scoring for a couple of minutes.
 
-**Stash raid** — win a war and the loser's placed Crew Safe is lootable for a
-window. A compass arrow, blip and live distance guide you in. You take real
-cash out of their treasury and real item stacks out of their vault, so placing
-a safe is opting into risk. No safe placed means nothing to lose — and nothing
-for you to find.
+**Objectives** — every war puts up points on both crews' blocks (their HQ if
+they hold none). Stand on one alone to take it; taking it scores and holding
+it keeps scoring. Both crews on it freezes it. A war is won on the map as well
+as on kills.
+
+**Live scoreboard** — both crews in their colours, the score, the clock, the
+objectives and a kill feed with names, on screen for everyone in the fight.
+A sound plays when your crew takes the lead or loses it.
+
+**Stash raid** — win a war and the loser's placed Crew Locker can be broken
+into for a window. A compass arrow, blip and live distance guide you in. You
+take real cash out of their treasury and real item stacks out of the locker.
+No locker placed means nothing to lose — and nothing for you to find.
 
 ## Graffiti
 
@@ -295,8 +323,9 @@ makes it **placeable**.
 ## Building
 
 `Config.TierUnlocks` is everything a crew can place, grouped by tier. Each
-entry's `kind` decides what it does: `hq`, `vault`, `safe`, `garage`, `medic`,
-`bench`, `task` or `prop`.
+entry's `kind` decides what it does: `hq`, `vault`, `garage`, `medic` (access
+to the street doc), `bench`, `task` (Crew Contracts) or `prop`. An entry with
+`placeable = false` works as soon as it is bought.
 
 The **HQ goes anywhere** — it's the crew's home and a new gang holds no turf
 yet. Everything else has to sit either on turf the crew holds or within
@@ -319,41 +348,71 @@ Verify anything you add with `/testmodel` first.
 Settings → Key Bindings → FiveM. Actions only appear when they're actually
 possible — no target nearby means no cuff option.
 
-Spray, garage, medic, revive, work turf, cuff/uncuff, bag head, put in trunk,
+Spray, garage, work turf, cuff/uncuff, bag head, put in trunk,
 carry, escort, take hostage, search and rob, slash a tyre, open the tablet.
 
 Several of these overlap with what a police or inventory script already does.
-Every single one is individually switchable in `Config.Radial.actions` — turn
-off whatever your server already handles so the two don't fight.
+Turn off whatever your server already handles on the **Radial** page in the
+builder, where you can also rename actions and drag them into order with the
+wheel drawn live beside the list.
 
 The restrained state (cuffed, bagged, carried, hostage) lives **server-side**,
 so neither the aggressor nor the victim decides on their own whether someone is
 cuffed. A restrained player whose captor disconnects is released rather than
 stuck in an animation nobody can clear.
 
-## Admin panel
+## Builder
 
-`/admintablet`, gated by the `xs-criminaltablet.admin` ACE. Every callback
-re-checks the permission server-side and logs to the Discord admin webhook.
+`/admintablet`, gated by the `xs-criminaltablet.admin` ACE. Every action is
+re-checked on the server. `Ctrl+K` searches every page, crew, block and
+setting.
 
-- **Dashboard** — crews, members, turf claimed, total banked, vehicles, tags,
-  live engagements, live contests, dealer status.
-- **Pricing** — every unlock and every upgrade level, priced live. Rows changed
-  from the config default are flagged and get a reset.
-- **Gangs** — create a crew in one form: display name, internal name, boss,
-  colour, member cap, starting treasury, starting turf, crew notice, and
-  whether to seed the graffiti library. Then per crew: settings, members, the
-  full rank editor, garage, and a danger tab with reset (keeps the crew, wipes
-  what they built) and disband.
-- **Turf** — create a zone for a crew, draw it, square it, move it, reassign it,
-  lock a block so rivals cannot build share on it, teleport to it.
-- **Graffiti** — give a crew a custom image or a catalogue design, see every
-  tag in the world, scrub individual tags or wipe a crew's entirely.
-- **War** — every live raid and war, with a stop button.
-- **Test Mode** — spawn NPC defenders on a zone, or arm a crew so their next
-  incoming raid comes with them.
-- **Chat** — world chat moderation and a handle → citizenid resolver.
-- **Dealer** — current stock, force a reroll, clear the cooldown.
+- **Overview** — crews, members, turf, money, wars and contests at a glance.
+- **Crews** — make a crew, set the boss, add members on a chosen rank, edit
+  ranks, the garage, and reset or disband. Every box that takes a person
+  searches online players and offline characters by name, server ID or
+  citizenid.
+- **Turf** and **Blips** — draw blocks on the satellite map or walk them in
+  game, and place crew map markers.
+- **Jobs** — edit the contract jobs from config.lua or make your own: courier
+  runs, hits, escorts and heists. Walk to each spot and press E to place it.
+- **Approvals** — crew logos and tag photos waiting on staff.
+- **Graffiti**, **Dealer**, **Dealer setup** and **Prices** — as before. Dealer
+  setup picks items from a searchable list.
+- **Street doc** — where the one street doc stands, and which crews have him.
+- **Crafting and perks** — bench recipes, the perk tree and treasury upgrades.
+- **Wars**, **Blackmarket** and **Test mode** — the live tools.
+- **Radial** — what is on the F6 wheel and in what order.
+- **Settings** — 173 settings in sections, searchable. Saving puts them live
+  for everyone at once and wins over config.lua; each changed one shows its
+  config.lua value with a reset.
+
+## Framework gangs
+
+On a crew's settings in the builder, pick a gang from your framework's own
+list (QBCore shared gangs or QBox gangs). Anyone the framework puts in that
+gang joins the crew on the rank matching their framework grade, and leaves when
+the framework takes them out. Changes made on the tablet go back to the
+framework. Crews that are not linked are never touched.
+
+Kicking someone who is offline from a linked crew also takes them out of the
+framework gang on QBox. On QBCore the framework can only be changed for players
+who are online, so remove them there too.
+
+## Crew uploads
+
+Crews can send their own logo (Roster → Logo) and their own photos to spray as
+tags (Studio → Own Photos). Both wait on the Approvals page; nothing shows in
+game until staff approve it. A logo replaces the crew's initials on the
+tablet, the war scoreboard and to rivals. Links must be direct https links to
+a .png, .jpg, .webp or .gif.
+
+## Rival intel
+
+When a rival tags a crew's wall, works their block, hangs round their HQ or
+takes one of them out, that crew is told straight away and the spot flashes on
+their map. All of it is kept for the Rivals app. Cooldowns, the HQ range and
+how long history is kept are in Settings → Rival intel.
 
 ## Solo test mode
 
@@ -397,6 +456,17 @@ on if your framework's gangs aren't already managed elsewhere.
   `config.lua`; guessed model names fail silently or with confusing errors.
 - `Config.Debug = true` prints bridge detection, rep changes and tick errors.
 
+### Upgrading to 3.0
+
+Replace everything except your config.lua. No SQL to run: the new tables and
+columns create themselves on start. The Crew Safe is gone: crews that bought
+one get what they paid back into their treasury on the first start, and the
+stash raid uses the Crew Locker. Take `Config.TierUnlocks`, `Config.Medic`,
+`Config.Radial.actions` and `Config.Vault.levelModels` from the new
+config.lua. Settings, jobs, crafting and perks you
+change in the builder are stored in the database, so config.lua stays as your
+defaults.
+
 ### Upgrading from 2.0.0
 
 2.0.1 corrected the satellite map, which was out by up to 300m at the edges.
@@ -432,8 +502,9 @@ the UI only ever greys things out for tidiness, never for security.
   position server-side, but otherwise trusts the client-reported ghost
   position. Fine for a permissioned action, not meant to resist a malicious
   client.
-- Garage vehicles spawn client-side so they inherit whatever your keys and fuel
-  resources expect. The DB owns the state; the spawn itself is trusted.
+- Garage vehicles spawn client-side so they inherit whatever your fuel
+  resource expects. The DB owns the state; the spawn itself is trusted. Keys
+  are handed over by the server, only for a car the crew really has out.
 
 ---
 
