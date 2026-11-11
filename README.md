@@ -277,6 +277,12 @@ The URL has to be a **direct link to the image file**, not a page that shows
 it. A dead link renders a visible `?` rather than a blank plate, so you can
 tell what went wrong.
 
+Spraying puts a can in your hand. You walk up to the wall, shake it, and the
+tag builds up as you spray, with paint mist and sound that nearby players see
+and hear. Game build 3258 or newer uses the LS Tags can and animation; older
+builds use Lamar's. Mist, sound, walking up and how high a tag can go are in
+`Config.Graffiti.spray` and under Graffiti in the builder's settings.
+
 ## Ranks and permissions
 
 26 permissions in six groups (roster, treasury, storage, property, turf & war,

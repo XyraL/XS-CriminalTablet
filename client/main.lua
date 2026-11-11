@@ -902,7 +902,7 @@ RegisterCommand('checkmodels', function()
     end
     add(Config.Territory.walls.model, 'Territory.walls')
     for i, m in ipairs(Config.Vault.levelModels or {}) do add(m, ('Vault.levelModels[%d]'):format(i)) end
-    add(Config.Graffiti.anim and Config.Graffiti.anim.prop, 'Graffiti.anim.prop')
+    add(Config.Graffiti.spray and Config.Graffiti.spray.prop, 'Graffiti.spray.prop')
     add(Config.Dealer.pedModel, 'Dealer.pedModel')
     add(Config.TestMode.defenderModel, 'TestMode.defenderModel')
     for _, v in ipairs(Config.Garage.adminGrantModels or {}) do add(v.model, 'Garage.adminGrantModels') end

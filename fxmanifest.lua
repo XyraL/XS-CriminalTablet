@@ -5,7 +5,7 @@ lua54 'yes'
 name 'XS-CriminalTablet'
 author 'XyraL'
 description 'Gang-only criminal tablet for QBox/QBCore. Turf war, raids, garage, graffiti, contracts and a full in-world creator.'
-version '3.0.0'
+version '3.1.0'
 
 -- Works on QBox (qbx_core) OR QBCore (qb-core). The bridge auto-detects.
 dependencies {
@@ -111,6 +111,8 @@ files {
     'web/mapedit.js',
     'web/craft.js',
     'web/graffiti.js',
+    'web/spraysound.js',
+    'web/sounds/*.ogg',
     'web/tag.html',
     -- Leaflet is vendored (BSD-2) — NUI has no reliable internet, so no CDN.
     'web/vendor/leaflet/leaflet.js',

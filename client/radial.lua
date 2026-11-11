@@ -214,7 +214,7 @@ local function pickGraffiti()
             description = art.source == 'admin' and 'Staff-issued' or 'Crew library',
             icon = 'spray-can',
             onSelect = function()
-                TriggerEvent('XS-CriminalTablet:client:startSpray', { kind = 'library', artId = art.id })
+                TriggerEvent('XS-CriminalTablet:client:startSpray', { kind = 'library', artId = art.id, previewArt = art.art, paint = lib_.color })
             end,
         }
     end

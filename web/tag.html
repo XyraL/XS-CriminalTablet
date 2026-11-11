@@ -13,6 +13,7 @@
         background: transparent; overflow: hidden;
     }
     #stage {
+        position: relative;
         width: 512px; height: 512px;
         display: grid; place-items: center;
         /* A touch of skew and rotation stops every tag reading as a decal
@@ -222,10 +223,122 @@ function render(payload) {
 // message that arrives before the fonts or the DOM are settled still ends
 // up on the wall, and so repeats are free.
 let last = null;
+let reveal = null;
+
+function seeded(seed) {
+    let s = seed >>> 0 || 1;
+    return () => {
+        s = (s * 1664525 + 1013904223) >>> 0;
+        return s / 4294967296;
+    };
+}
+
+function artBox() {
+    const el = stage.firstElementChild;
+    if (el && el.offsetWidth > 20 && el.offsetHeight > 20) {
+        const pad = 18;
+        const x = Math.max(0, el.offsetLeft - pad);
+        const y = Math.max(0, el.offsetTop - pad);
+        return { x, y, w: Math.min(512 - x, el.offsetWidth + pad * 2), h: Math.min(512 - y, el.offsetHeight + pad * 2) };
+    }
+    return { x: 0, y: 0, w: 512, h: 512 };
+}
+
+function coat(box, rand, rowHeight, alpha, sweep) {
+    const rows = Math.max(2, Math.round(box.h / rowHeight));
+    const step = box.h / rows;
+    const radius = Math.max(30, step * 0.85);
+    const cols = Math.max(4, Math.round(box.w / (radius * 0.55)));
+    const colStep = box.w / cols;
+    const out = [];
+    const dab = (col, row) => out.push({
+        x: box.x + colStep * (col + 0.5) + (rand() - 0.5) * radius * 0.5,
+        y: box.y + step * (row + 0.5) + (rand() - 0.5) * step * 0.6,
+        r: radius * (0.85 + rand() * 0.3),
+        a: alpha * (0.85 + rand() * 0.15),
+    });
+    if (sweep === 'across') {
+        for (let c = 0; c < cols; c++) {
+            for (let i = 0; i < rows; i++) dab(c, c % 2 === 0 ? i : rows - 1 - i);
+        }
+    } else {
+        for (let r = 0; r < rows; r++) {
+            const row = rows - 1 - r;
+            for (let i = 0; i < cols; i++) dab(r % 2 === 0 ? i : cols - 1 - i, row);
+        }
+    }
+    return out;
+}
+
+function setMask(dabs) {
+    if (!dabs) {
+        stage.style.webkitMaskImage = '';
+        stage.style.webkitMaskPosition = '';
+        stage.style.webkitMaskSize = '';
+        stage.style.webkitMaskRepeat = '';
+        return;
+    }
+    if (!dabs.length) {
+        stage.style.webkitMaskImage = 'linear-gradient(transparent, transparent)';
+        stage.style.webkitMaskPosition = '0 0';
+        stage.style.webkitMaskSize = '100% 100%';
+        stage.style.webkitMaskRepeat = 'no-repeat';
+        return;
+    }
+    const img = [];
+    const pos = [];
+    const size = [];
+    for (const d of dabs) {
+        const a = d.a.toFixed(3);
+        img.push(`radial-gradient(closest-side, rgba(0,0,0,${a}) 0%, rgba(0,0,0,${(d.a * 0.8).toFixed(3)}) 45%, rgba(0,0,0,${(d.a * 0.3).toFixed(3)}) 78%, rgba(0,0,0,0) 100%)`);
+        pos.push(`${(d.x - d.r).toFixed(1)}px ${(d.y - d.r).toFixed(1)}px`);
+        size.push(`${(d.r * 2).toFixed(1)}px ${(d.r * 2).toFixed(1)}px`);
+    }
+    stage.style.webkitMaskImage = img.join(',');
+    stage.style.webkitMaskPosition = pos.join(',');
+    stage.style.webkitMaskSize = size.join(',');
+    stage.style.webkitMaskRepeat = 'no-repeat';
+}
+
+function stopReveal() {
+    if (reveal) clearInterval(reveal.timer);
+    reveal = null;
+    setMask(null);
+}
+
+function startReveal(spec) {
+    stopReveal();
+    const ms = Math.max(400, Number(spec.ms) || 4000);
+    const box = artBox();
+    const rand = seeded(Number(spec.id) || 1);
+    const first = coat(box, rand, 48, 0.6, 'across');
+    const second = coat(box, rand, 86, 0.9, 'up');
+    const dabs = first.concat(second);
+    const firstShare = 0.55;
+    const started = Date.now() + Math.max(0, Number(spec.delay) || 0);
+    let shown = -1;
+    setMask([]);
+    reveal = { id: spec.id, timer: null };
+    reveal.timer = setInterval(() => {
+        const p = Math.max(0, (Date.now() - started) / ms);
+        if (p >= 1) { stopReveal(); return; }
+        const n = p < firstShare
+            ? Math.floor((p / firstShare) * first.length)
+            : first.length + Math.floor(((p - firstShare) / (1 - firstShare)) * second.length);
+        if (n === shown) return;
+        shown = n;
+        setMask(dabs.slice(0, n));
+    }, 45);
+}
 
 function apply(data) {
     last = data;
     render(data);
+    if (!data.reveal) {
+        if (reveal) stopReveal();
+    } else if (!reveal || reveal.id !== data.reveal.id) {
+        startReveal(data.reveal);
+    }
 }
 
 window.addEventListener('message', (ev) => {

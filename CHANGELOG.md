@@ -1,5 +1,23 @@
 # Changelog
 
+## [3.1.0] - 2026-11-10
+
+### Added
+
+- A spray can in your hand: walk up, shake it, then spray
+- The tag builds up on the wall as you spray
+- Paint mist from the can in the tag's colour
+- Can rattle and spray hiss that nearby players hear
+- LS Tags can and animation on game build 3258 or newer
+- Graffiti settings for mist, sound, volume, walk-up and height
+
+### Fixed
+
+- Spray from the tablet checks for a can before you aim
+- The missing-can message uses the item's own name
+
+Replace everything except your config.lua, then copy across the new Graffiti.spray section. The old Graffiti.anim section can go. No SQL to run.
+
 ## [3.0.0] - 2026-11-09
 
 ### Added

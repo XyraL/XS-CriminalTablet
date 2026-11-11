@@ -1,0 +1,4 @@
+Can rattle sounds. Both CC0 1.0 (public domain) from freesound.org.
+
+shake1.ogg  "Spray Can Shake" by esperri             https://freesound.org/s/119151/
+shake2.ogg  "Spray Paint Shake Seven" by cbakos       https://freesound.org/s/200377/

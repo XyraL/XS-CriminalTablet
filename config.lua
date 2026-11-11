@@ -502,43 +502,27 @@ Config.Graffiti = {
     maxPerGang = 25,
     -- Server-wide cap so the world can't fill up.
     maxTotal = 300,
-    -- Seconds the spray animation takes.
+    -- Seconds of spraying, after a quick shake of the can.
     sprayDuration = 6,
     -- How far in front of the camera a wall counts as "aimed at".
     aimDistance = 6.0,
-    -- The tagging animation. Swap the dict/clip for whatever your server
-    -- streams; a dict that won't load just means no animation, never a
-    -- stuck spray. Leave dict blank to skip the animation entirely.
-    anim = {
-        -- Tried in order; the first dictionary that streams is used. Put
-        -- your preferred one at the top. If none of them load, spraying
-        -- still works, it just has no animation and says so in the console.
-        candidates = {
-            { dict = 'switch@franklin@lamar_tagging_wall', clip = 'lamar_tagging_loop_lamar' },
-            { dict = 'anim@amb@nightclub@peds@',           clip = 'rcmme_amanda1ig_2' },
-            { dict = 'missheistfbi3b_ig7',                 clip = 'lift_fibagent_loop' },
-            { dict = 'amb@world_human_bum_wash@male@high@base', clip = 'base' },
-        },
-        flag = 49,
-        -- Prop held in the right hand while spraying. Blank for none.
-        prop = 'prop_cs_spray_can',
-        -- Paint coming out of the can.
-        --
-        -- GTA has no spray-paint particle, so this is a small puff tinted
-        -- to the colour going on the wall. 'ent_sht_steam' reads as water
-        -- up close — swap it for anything you like, or set enabled=false
-        -- and rely on the animation alone.
-        -- Off by default: a non-looped burst plays out its own lifetime,
-        -- so the last puff always outlasts the progress bar by a beat,
-        -- and nothing in the base game actually looks like paint.
-        ptfx = {
-            enabled = false,
-            asset = 'core',
-            name = 'ent_sht_steam',
-            scale = 0.25,
-            alpha = 0.65,
-            intervalMs = 160,
-        },
+    -- The can in your hand while you pick a spot and spray. On game build
+    -- 3258 or newer it uses GTA Online's LS Tags can and spray paint, and
+    -- its tagging animation when the build has it. Older builds get
+    -- Lamar's can, spray paint and tagging loop.
+    spray = {
+        -- Blank uses the game's own can. Set a model name to use another.
+        prop = '',
+        -- Paint mist from the nozzle in the tag's colour.
+        mist = true,
+        -- Can rattle and the game's spray hiss. Players nearby hear it too.
+        sound = true,
+        -- How loud the can rattle is, from 0 to 1.
+        volume = 0.5,
+        -- Walk up to the wall and face it before spraying.
+        walkUp = true,
+        -- Highest the middle of a tag can sit above your feet, in metres.
+        reach = 3.0,
     },
     -- Needs the can item in inventory. Leave blank to require nothing.
     requiredItem = 'spraycan',

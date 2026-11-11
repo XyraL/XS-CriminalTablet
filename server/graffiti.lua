@@ -185,6 +185,27 @@ function Graffiti.DeleteArt(src, artId)
 end
 
 -- ── spraying ────────────────────────────────────────────────
+local function itemLabel(item)
+    local ok, data = pcall(function() return exports.ox_inventory:Items(item) end)
+    if ok and type(data) == 'table' and type(data.label) == 'string' and data.label ~= '' then return data.label end
+    return item
+end
+
+local function hasCan(src)
+    local item = Config.Graffiti.requiredItem
+    if not item or item == '' then return true end
+    local ok, count = pcall(function() return exports.ox_inventory:GetItemCount(src, item) end)
+    if ok and (count or 0) >= 1 then return true end
+    return false, ('You need a %s to spray.'):format(itemLabel(item))
+end
+
+function Graffiti.Ready(src)
+    if not Config.Graffiti.enabled then return false, 'Graffiti is switched off on this server.' end
+    if not Gangs.GetBySource(src) then return false, 'You are not in a crew.' end
+    if not Gangs.HasPerm(src, 'spray_graffiti') then return false, 'Your rank cannot spray.' end
+    return hasCan(src)
+end
+
 function Graffiti.Spray(src, payload)
     if not Config.Graffiti.enabled then return false, 'graffiti is disabled' end
     if not Gangs.HasPerm(src, 'spray_graffiti') then return false, 'no permission' end
@@ -207,10 +228,8 @@ function Graffiti.Spray(src, payload)
     local art, artId, err = resolveArt(gang, payload)
     if not art then return false, err end
 
-    if Config.Graffiti.requiredItem and Config.Graffiti.requiredItem ~= '' then
-        local count = exports.ox_inventory:GetItemCount(src, Config.Graffiti.requiredItem)
-        if (count or 0) < 1 then return false, ('you need a %s'):format(Config.Graffiti.requiredItem) end
-    end
+    local canOk, canErr = hasCan(src)
+    if not canOk then return false, canErr end
 
     -- Covering: spraying over a rival's tag removes it and pays more.
     local covered = nil
@@ -381,6 +400,11 @@ end)
 
 lib.callback.register('XS-CriminalTablet:graffiti:getLibrary', function(src)
     return Graffiti.GetLibrary(src)
+end)
+
+lib.callback.register('XS-CriminalTablet:graffiti:ready', function(src)
+    local ok, err = Graffiti.Ready(src)
+    return { ok = ok, error = err }
 end)
 
 lib.callback.register('XS-CriminalTablet:graffiti:spray', function(src, payload)

@@ -1,6 +1,7 @@
 Config.Intel = Config.Intel or { enabled = true, alertCooldownMinutes = 5, hqRadius = 60.0, hqSeconds = 30, alertKills = true, mapPing = true, keepDays = 30 }
 Config.Approvals = Config.Approvals or { logos = true, tags = true, maxPending = 3, autoApprove = false }
 Config.FrameworkLink = Config.FrameworkLink or { enabled = false }
+Config.Graffiti.spray = Config.Graffiti.spray or { prop = '', mist = true, sound = true, volume = 0.5, walkUp = true, reach = 3.0 }
 
 -- ─────────────────────────────────────────────────────────────
 -- Live settings: the parts of config.lua staff can change from the
@@ -118,7 +119,12 @@ Settings.Sections = {
         { 'Graffiti.consumeItem', 'bool', 'Spraying uses up the item', nil, needs = 'Graffiti.enabled' },
         { 'Graffiti.maxPerGang', 'int', 'Tags per crew', nil, min = 1, max = 500, needs = 'Graffiti.enabled' },
         { 'Graffiti.maxTotal', 'int', 'Tags on the whole map', nil, min = 1, max = 5000, needs = 'Graffiti.enabled' },
-        { 'Graffiti.sprayDuration', 'int', 'Time to spray', nil, min = 1, max = 60, unit = 's', needs = 'Graffiti.enabled' },
+        { 'Graffiti.sprayDuration', 'int', 'Time to spray', 'After a quick shake of the can.', min = 1, max = 60, unit = 's', needs = 'Graffiti.enabled' },
+        { 'Graffiti.spray.mist', 'bool', 'Paint mist from the can', nil, needs = 'Graffiti.enabled' },
+        { 'Graffiti.spray.sound', 'bool', 'Can rattle and spray sound', 'Players nearby hear it too.', needs = 'Graffiti.enabled' },
+        { 'Graffiti.spray.volume', 'num', 'Can rattle volume', 'The spray hiss is the game\'s own sound.', min = 0, max = 1, step = 0.05, needs = 'Graffiti.spray.sound' },
+        { 'Graffiti.spray.walkUp', 'bool', 'Walk up to the wall first', 'Off sprays from where you stand.', needs = 'Graffiti.enabled' },
+        { 'Graffiti.spray.reach', 'num', 'Highest a tag can go', 'How far above your feet the middle of a tag can sit.', min = 1, max = 10, step = 0.1, unit = 'm', needs = 'Graffiti.enabled' },
         { 'Graffiti.heldZonesOnly', 'bool', 'Only on blocks the crew holds', nil, needs = 'Graffiti.enabled' },
         { 'Graffiti.allowCovering', 'bool', 'Rivals can spray over a tag', nil, needs = 'Graffiti.enabled' },
         { 'Graffiti.expiryDays', 'int', 'Tags fade after', '0 means they stay until covered or removed.', min = 0, max = 365, unit = 'days', needs = 'Graffiti.enabled' },

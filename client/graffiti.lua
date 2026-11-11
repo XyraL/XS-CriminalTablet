@@ -32,6 +32,7 @@ local function destroySurface(tagId)
     local s = live[tagId]
     if not s then return end
     if s.dui then
+        pushes[s.dui] = nil
         SetDuiUrl(s.dui, 'about:blank')
         DestroyDui(s.dui)
     end
@@ -45,11 +46,15 @@ end
 -- single send at that moment lands on nothing, the page never paints, and
 -- the texture stays blank forever with every other check reporting fine.
 -- The page cannot acknowledge, so the answer is to keep saying it.
+local pushes = {}
+
 local function pushRender(dui, payload, forMs)
+    if not dui then return end
+    local token = (pushes[dui] or 0) + 1
+    pushes[dui] = token
     CreateThread(function()
         local until_ = GetGameTimer() + (forMs or 3000)
-        while GetGameTimer() < until_ do
-            if not dui then return end
+        while GetGameTimer() < until_ and pushes[dui] == token do
             SendDuiMessage(dui, payload)
             Wait(250)
         end
@@ -133,6 +138,7 @@ local function createSurface(tag)
         end
         pushRender(dui, payload)
         surface.ready = true
+        surface.readyAt = GetGameTimer()
     end)
 
     return surface
@@ -202,26 +208,26 @@ local UVW = {
     bl = { 0.0, 1.0, 1.0 },
 }
 
-local function poly(surface, a, b, c, ua, ub, uc)
+local function poly(surface, a, b, c, ua, ub, uc, alpha)
     DrawSpritePoly(
         a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z,
-        255, 255, 255, 255, surface.txd, surface.tex,
+        255, 255, 255, alpha or 255, surface.txd, surface.tex,
         ua[1], ua[2], ua[3],
         ub[1], ub[2], ub[3],
         uc[1], uc[2], uc[3])
 end
 
-local function drawTag(tag, surface)
+local function drawTag(tag, surface, alpha)
     local tl, tr, br, bl = cornersOf(tag)
 
     -- Two triangles, wound so the quad is visible from the painted side.
-    poly(surface, tl, tr, bl, UVW.tl, UVW.tr, UVW.bl)
-    poly(surface, tr, br, bl, UVW.tr, UVW.br, UVW.bl)
+    poly(surface, tl, tr, bl, UVW.tl, UVW.tr, UVW.bl, alpha)
+    poly(surface, tr, br, bl, UVW.tr, UVW.br, UVW.bl, alpha)
 
     -- Both faces, so a tag is never invisible from the "wrong" side when
     -- a wall turns out to be a thin fence or a billboard.
-    poly(surface, bl, tr, tl, UVW.bl, UVW.tr, UVW.tl)
-    poly(surface, bl, br, tr, UVW.bl, UVW.br, UVW.tr)
+    poly(surface, bl, tr, tl, UVW.bl, UVW.tr, UVW.tl, alpha)
+    poly(surface, bl, br, tr, UVW.bl, UVW.br, UVW.tr, alpha)
 end
 
 -- ── render loop ─────────────────────────────────────────────
@@ -316,6 +322,13 @@ local function previewSurface(payload)
     -- Re-send on every open: the studio may have composed something new
     -- since the last time this surface was used.
     preview.ready = false
+    preview.base = {
+        action = 'render',
+        art = payload.previewArt or '',
+        tint = payload.tint or (payload.fill or '#3d7dff'),
+        label = payload.label or '',
+    }
+    preview.current = preview.base
     CreateThread(function()
         local waited = 0
         while not IsDuiAvailable(preview.dui) and waited < 5000 do
@@ -340,29 +353,35 @@ local function previewSurface(payload)
             preview.bound = true
         end
 
-        pushRender(preview.dui, json.encode({
-            action = 'render',
-            art = payload.previewArt or '',
-            tint = payload.tint or (payload.fill or '#3d7dff'),
-            label = payload.label or '',
-        }))
+        pushRender(preview.dui, json.encode(preview.current))
         preview.ready = true
     end)
 
     return preview
 end
 
-local function previewQuad(coords, normal, scale, ok)
-    local fake = {
+local function revealPreview(ms, delay)
+    if not preview or not preview.base then return end
+    local msg = {}
+    for k, v in pairs(preview.base) do msg[k] = v end
+    msg.reveal = { id = GetGameTimer(), ms = ms, delay = delay or 0 }
+    preview.current = msg
+    if preview.ready then pushRender(preview.dui, json.encode(msg), 1500) end
+end
+
+local function fakeTag(coords, normal, scale)
+    return {
         x = coords.x, y = coords.y, z = coords.z,
         rx = normal.x, ry = normal.y, rz = normal.z,
         scale = scale,
     }
+end
+
+local function previewQuad(coords, normal, scale, ok, alpha)
+    local fake = fakeTag(coords, normal, scale)
 
     if preview and preview.ready then
-        -- The artwork itself shows you where it is going. Anything drawn
-        -- around it is just in the way.
-        drawTag(fake, preview)
+        drawTag(fake, preview, alpha)
         return
     end
 
@@ -377,17 +396,552 @@ local function previewQuad(coords, normal, scale, ok)
     DrawLine(bl.x, bl.y, bl.z, tl.x, tl.y, tl.z, r, g, b, 120)
 end
 
-local spraying = false
+local SETS = {
+    male = {
+        dict = 'anim@scripted@freemode@postertag@graffiti_spray@male@',
+        shake = 'shake_can_male',
+        spray = { 'spray_can_var_01_male', 'spray_can_male', 'spray_can_var_02_male' },
+        suffix = '_male',
+        face = { dict = 'anim@scripted@freemode@tagcoll_ig_postertag@male@', clip = 'postertag_facial' },
+        grip = vec3(0.0, 0.0, 0.07),
+    },
+    female = {
+        dict = 'anim@scripted@freemode@postertag@graffiti_spray@heeled@',
+        shake = 'shake_can_female',
+        spray = { 'spray_can_var_01_female', 'spray_can_var_02_female' },
+        suffix = '_female',
+        face = { dict = 'anim@scripted@freemode@tagcoll_ig_postertag@heeled@', clip = 'postertag_facial' },
+        grip = vec3(0.0, 0.0, 0.07),
+    },
+    classic = {
+        dict = 'switch@franklin@lamar_tagging_wall',
+        spray = { 'lamar_tagging_wall_loop_lamar' },
+        grip = vec3(0.0, 0.0, 0.0),
+    },
+}
 
-local function stopSpraying()
-    spraying = false
-    lib.hideTextUI()
-    ClearPedTasks(PlayerPedId())
+local KITS = {
+    lstags = {
+        name = 'lstags',
+        can = 'm24_1_prop_m41_spraycan_01a',
+        asset = 'scr_ih_col',
+        loop = 'scr_ih_col_poster_spraytag',
+        stop = 'spray_tag_stop',
+        at = vec3(0.0, 0.02, 0.2),
+        rot = vec3(90.0, 0.0, 0.0),
+    },
+    classic = {
+        name = 'classic',
+        can = 'prop_cs_spray_can',
+        asset = 'scr_playerlamgraff',
+        loop = 'scr_lamgraff_paint_spray',
+        at = vec3(0.0, 0.0, 0.0),
+        rot = vec3(0.0, 0.0, 0.0),
+    },
+}
+
+local HISS_NAME = 'Vent_Fizzing'
+local HISS_SET = 'dlc_ch_maintenance_sounds'
+local STAND_OFF = 0.8
+local GHOST_ALPHA = 110
+local HEAR_RANGE = 30.0
+
+local spraying = false
+local can = nil
+local run = nil
+local painting = nil
+local watching = {}
+
+local function sprayCfg()
+    local s = Config.Graffiti.spray or {}
+    return {
+        prop = type(s.prop) == 'string' and s.prop or '',
+        mist = s.mist ~= false,
+        sound = s.sound ~= false,
+        volume = math.max(0.0, math.min(1.0, tonumber(s.volume) or 0.5)),
+        walkUp = s.walkUp ~= false,
+        reach = tonumber(s.reach) or 3.0,
+    }
 end
 
--- Whatever the studio composed, reduced to something tag.html can draw.
--- The preview has to show the same artwork the server will end up
--- storing, so the two are derived from the one payload here.
+local function hint(text)
+    SetTextFont(4)
+    SetTextScale(0.0, 0.36)
+    SetTextColour(255, 77, 90, 230)
+    SetTextCentre(true)
+    SetTextOutline()
+    BeginTextCommandDisplayText('STRING')
+    AddTextComponentSubstringPlayerName(text)
+    EndTextCommandDisplayText(0.5, 0.86)
+end
+
+local function paintColour(payload)
+    payload = payload or {}
+    for _, key in ipairs({ 'tint', 'fill', 'paint' }) do
+        local v = payload[key]
+        if type(v) == 'string' and v:match('^#%x%x%x%x%x%x$') then return v end
+    end
+    return '#3d7dff'
+end
+
+local function pickSet(ped)
+    local set = IsPedMale(ped) and SETS.male or SETS.female
+    if DoesAnimDictExist(set.dict) then return set end
+    if DoesAnimDictExist(SETS.classic.dict) then return SETS.classic end
+    return nil
+end
+
+local function pickKit()
+    if (tonumber(GetGameBuildNumber()) or 0) >= 3258 and IsModelInCdimage(KITS.lstags.can) then
+        return KITS.lstags
+    end
+    return KITS.classic
+end
+
+local function loadDict(dict)
+    if HasAnimDictLoaded(dict) then return true end
+    return pcall(lib.requestAnimDict, dict, 3000) and HasAnimDictLoaded(dict)
+end
+
+local function clipMs(set, clip, fallback)
+    local d = GetAnimDuration(set.dict, clip)
+    if not d or d <= 0.1 then return fallback end
+    return math.floor(d * 1000)
+end
+
+local function attachCan(obj, set)
+    local ped = PlayerPedId()
+    local grip = (set and set.grip) or SETS.male.grip
+    AttachEntityToEntity(obj, ped, GetPedBoneIndex(ped, 28422),
+        grip.x, grip.y, grip.z, 0.0, 0.0, 0.0, true, true, false, true, 1, true)
+end
+
+local function takeCan(set, kit)
+    if can and DoesEntityExist(can) then return can end
+    local model = sprayCfg().prop
+    if model == '' or not IsModelInCdimage(model) then model = kit.can end
+    if not XSModel.Load(model) then
+        model = KITS.classic.can
+        if not XSModel.Load(model) then return nil end
+    end
+    local at = GetEntityCoords(PlayerPedId())
+    local obj = CreateObject(model, at.x, at.y, at.z + 0.2, true, true, false)
+    if not obj or obj == 0 then return nil end
+    SetEntityCollision(obj, false, false)
+    attachCan(obj, set)
+    SetModelAsNoLongerNeeded(model)
+    can = obj
+    return obj
+end
+
+local function dropCan()
+    if can and DoesEntityExist(can) then
+        DetachEntity(can, true, false)
+        DeleteEntity(can)
+    end
+    can = nil
+end
+
+local function loadMist(kit)
+    if HasNamedPtfxAssetLoaded(kit.asset) then return true end
+    RequestNamedPtfxAsset(kit.asset)
+    local untilT = GetGameTimer() + 2000
+    while not HasNamedPtfxAssetLoaded(kit.asset) and GetGameTimer() < untilT do Wait(0) end
+    return HasNamedPtfxAssetLoaded(kit.asset)
+end
+
+local function mistOn(entity, hex, kit)
+    if not entity or entity == 0 or not DoesEntityExist(entity) then return nil end
+    if not HasNamedPtfxAssetLoaded(kit.asset) then return nil end
+    UseParticleFxAssetNextCall(kit.asset)
+    local fx = StartParticleFxLoopedOnEntity(kit.loop, entity,
+        kit.at.x, kit.at.y, kit.at.z, kit.rot.x, kit.rot.y, kit.rot.z, 1.0, false, false, false)
+    if not fx or fx == 0 then return nil end
+    local r, g, b = hexToRgb(hex)
+    SetParticleFxLoopedColour(fx, r / 255, g / 255, b / 255, false)
+    return fx
+end
+
+local function mistOff(fx)
+    if fx then StopParticleFxLooped(fx, false) end
+end
+
+local function mistPuff(entity, hex, kit)
+    if not kit.stop or not entity or entity == 0 or not DoesEntityExist(entity) then return end
+    if not HasNamedPtfxAssetLoaded(kit.asset) then return end
+    local r, g, b = hexToRgb(hex)
+    UseParticleFxAssetNextCall(kit.asset)
+    SetParticleFxNonLoopedColour(r / 255, g / 255, b / 255)
+    StartParticleFxNonLoopedOnEntity(kit.stop, entity, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, false, false, false)
+end
+
+local function hissOn(entity)
+    if not entity or entity == 0 or not DoesEntityExist(entity) then return nil end
+    local id = GetSoundId()
+    PlaySoundFromEntity(id, HISS_NAME, entity, HISS_SET, false, 0)
+    return id
+end
+
+local function hissOff(id)
+    if not id then return end
+    StopSound(id)
+    ReleaseSoundId(id)
+end
+
+local function keepHissing(holder, entity)
+    if not holder.snd or not HasSoundFinished(holder.snd) then return end
+    if GetGameTimer() - (holder.sndAt or 0) < 400 then return end
+    ReleaseSoundId(holder.snd)
+    holder.snd = hissOn(entity)
+    holder.sndAt = GetGameTimer()
+end
+
+local function sound(id, kind, extra)
+    local data = { id = id, kind = kind }
+    for k, v in pairs(extra or {}) do data[k] = v end
+    SendNUIMessage({ action = 'spraySound', data = data })
+end
+
+local function share(state)
+    LocalPlayer.state:set('xsSpray', state, true)
+end
+
+local function hearVolume(ped)
+    if not ped or ped == 0 or not DoesEntityExist(ped) then return 0.0 end
+    local d = #(GetEntityCoords(ped) - GetEntityCoords(PlayerPedId()))
+    if d >= HEAR_RANGE then return 0.0 end
+    local v = 1.0 - d / HEAR_RANGE
+    return v * v
+end
+
+local function stopWatching(sid)
+    local w = watching[sid]
+    if not w then return end
+    mistOff(w.fx)
+    hissOff(w.snd)
+    w.snd = nil
+    sound('p' .. sid, 'stop')
+    watching[sid] = nil
+end
+
+AddStateBagChangeHandler('xsSpray', nil, function(bagName, _, value)
+    local player = GetPlayerFromStateBagName(bagName)
+    if not player or player == 0 or player == PlayerId() then return end
+    local sid = GetPlayerServerId(player)
+    if type(value) ~= 'table' then stopWatching(sid) return end
+
+    local ped = GetPlayerPed(player)
+    if ped == 0 or #(GetEntityCoords(ped) - GetEntityCoords(PlayerPedId())) > HEAR_RANGE + 15.0 then
+        stopWatching(sid)
+        return
+    end
+
+    local w = watching[sid] or { seq = 0 }
+    watching[sid] = w
+    w.seq = w.seq + 1
+    w.seen = GetGameTimer()
+    local seq = w.seq
+    local cfg = sprayCfg()
+    local kit = KITS[value.kit] or KITS.classic
+
+    if value.shake and cfg.sound then
+        sound('p' .. sid, 'shake', { ms = value.shake, vol = hearVolume(ped) * cfg.volume })
+    end
+    if not value.on then
+        if w.fx then mistPuff(w.ent, value.color, kit) end
+        mistOff(w.fx)
+        w.fx = nil
+        hissOff(w.snd)
+        w.snd = nil
+        return
+    end
+    if not value.net or (w.fx or not cfg.mist) and (w.snd or not cfg.sound) then return end
+
+    CreateThread(function()
+        local untilT = GetGameTimer() + 1500
+        while not NetworkDoesNetworkIdExist(value.net) and GetGameTimer() < untilT do Wait(50) end
+        if watching[sid] ~= w or w.seq ~= seq or not NetworkDoesNetworkIdExist(value.net) then return end
+        w.ent = NetToObj(value.net)
+        if cfg.sound and not w.snd then
+            w.snd = hissOn(w.ent)
+            w.sndAt = GetGameTimer()
+        end
+        if cfg.mist and not w.fx and loadMist(kit) and watching[sid] == w and w.seq == seq then
+            w.fx = mistOn(w.ent, value.color, kit)
+        end
+        while watching[sid] == w and w.seq == seq and w.snd do
+            Wait(100)
+            keepHissing(w, w.ent)
+        end
+    end)
+end)
+
+CreateThread(function()
+    while true do
+        Wait(2000)
+        local now = GetGameTimer()
+        for sid, w in pairs(watching) do
+            if now - (w.seen or 0) > 20000 then stopWatching(sid) end
+        end
+    end
+end)
+
+local function sceneAt(set, clip, heading)
+    local turn = GetAnimInitialOffsetRotation(set.dict, clip, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2)
+    local yaw = heading - ((turn and turn.z) or 0.0)
+    local off = GetAnimInitialOffsetPosition(set.dict, clip, 0.0, 0.0, 0.0, 0.0, 0.0, yaw, 0.0, 2)
+    if not off or #off > 3.0 then return nil end
+    local pos = GetEntityCoords(PlayerPedId())
+    return vec3(pos.x - off.x, pos.y - off.y, pos.z - off.z), yaw
+end
+
+local function playClip(r, clip, loop, first)
+    local ped = PlayerPedId()
+    r.clip = clip
+    if r.synced and can and DoesEntityExist(can) then
+        local origin, yaw = sceneAt(r.set, clip, r.heading)
+        if origin then
+            if IsEntityAttached(can) then DetachEntity(can, false, false) end
+            local scene = NetworkCreateSynchronisedScene(origin.x, origin.y, origin.z, 0.0, 0.0, yaw, 2, true, false, 1.0, 0.0, 1.0)
+            NetworkAddPedToSynchronisedScene(ped, scene, r.set.dict, clip, first and 8.0 or 4.0, -4.0, 262, 0, 1000.0, 0)
+            NetworkAddEntityToSynchronisedScene(can, scene, r.set.dict, (clip:gsub(r.set.suffix .. '$', '_spraycan')), 1000.0, -1000.0, 4)
+            NetworkStartSynchronisedScene(scene)
+            if r.scene then NetworkStopSynchronisedScene(r.scene) end
+            r.scene = scene
+            return
+        end
+        r.synced = false
+        if not IsEntityAttached(can) then attachCan(can, r.set) end
+    end
+    TaskPlayAnim(ped, r.set.dict, clip, first and 4.0 or 3.0, -3.0, -1, loop and 1 or 2, 0.0, false, false, false)
+end
+
+local function stopEffects()
+    local r = run
+    if not r then return end
+    run = nil
+    r.active = false
+    if r.fx then mistPuff(can, r.hex, r.kit) end
+    mistOff(r.fx)
+    r.fx = nil
+    hissOff(r.snd)
+    r.snd = nil
+    if r.shared then share(nil) end
+    sound('self', 'stop')
+    local ped = PlayerPedId()
+    if r.scene then
+        NetworkStopSynchronisedScene(r.scene)
+        r.scene = nil
+    elseif r.set and r.clip then
+        StopAnimTask(ped, r.set.dict, r.clip, 2.0)
+    end
+    if can and DoesEntityExist(can) and not IsEntityAttached(can) then attachCan(can, r.set) end
+end
+
+local function stopSpraying(keepCan)
+    spraying = false
+    lib.hideTextUI()
+    stopEffects()
+    if not keepCan then
+        dropCan()
+        return
+    end
+    local held = can
+    SetTimeout(700, function()
+        if can == held and not spraying and not run then dropCan() end
+    end)
+end
+
+local function reachable(coords)
+    local feet = GetEntityCoords(PlayerPedId()).z - 1.0
+    local up = coords.z - feet
+    return up >= -1.5 and up <= sprayCfg().reach
+end
+
+local function wallHeading(ped, coords, normal)
+    if #vec2(normal.x, normal.y) > 0.3 then
+        return GetHeadingFromVector_2d(-normal.x, -normal.y)
+    end
+    local p = GetEntityCoords(ped)
+    return GetHeadingFromVector_2d(coords.x - p.x, coords.y - p.y)
+end
+
+local function walkUp(ped, coords, normal)
+    local flat = vec2(normal.x, normal.y)
+    if #flat < 0.3 then return true end
+    flat = flat / #flat
+    local feet = GetEntityCoords(ped)
+    local spot = vec2(coords.x + flat.x * STAND_OFF, coords.y + flat.y * STAND_OFF)
+    local function away()
+        local p = GetEntityCoords(ped)
+        return #(vec2(p.x, p.y) - spot)
+    end
+    if away() <= 0.35 then return true end
+
+    TaskGoStraightToCoord(ped, spot.x, spot.y, feet.z, 1.0, 5000, wallHeading(ped, coords, normal), 0.1)
+    local untilT = GetGameTimer() + 5000
+    local lastPos, lastCheck = GetEntityCoords(ped), GetGameTimer() + 500
+    while GetGameTimer() < untilT and away() > 0.3 do
+        Wait(0)
+        DisableControlAction(0, 30, true)
+        DisableControlAction(0, 31, true)
+        DisableControlAction(0, 21, true)
+        DisableControlAction(0, 22, true)
+        if GetGameTimer() - lastCheck > 700 then
+            local p = GetEntityCoords(ped)
+            if #(p - lastPos) < 0.05 then break end
+            lastPos, lastCheck = p, GetGameTimer()
+        end
+    end
+    if away() > 1.0 then
+        ClearPedTasks(ped)
+        return false
+    end
+    return true
+end
+
+local function faceWall(ped, coords, normal)
+    local heading = wallHeading(ped, coords, normal)
+    TaskAchieveHeading(ped, heading, 1000)
+    local untilT = GetGameTimer() + 1000
+    while GetGameTimer() < untilT do
+        Wait(50)
+        local diff = math.abs(((GetEntityHeading(ped) - heading + 180.0) % 360.0) - 180.0)
+        if diff < 12.0 then break end
+    end
+    return heading
+end
+
+local function realTagUp(paint)
+    for _, t in ipairs(tags) do
+        if not paint.before[t.id] then
+            local dx, dy, dz = t.x - paint.fake.x, t.y - paint.fake.y, t.z - paint.fake.z
+            if dx * dx + dy * dy + dz * dz < 0.25 then
+                local s = live[t.id]
+                return s and s.ready and s.readyAt and GetGameTimer() - s.readyAt > 700 or false
+            end
+        end
+    end
+    return false
+end
+
+local function startPainting(coords, normal, scale)
+    local before = {}
+    for _, t in ipairs(tags) do before[t.id] = true end
+    local paint = { fake = fakeTag(coords, normal, scale), alpha = GHOST_ALPHA, before = before }
+    painting = paint
+    CreateThread(function()
+        while painting == paint do
+            Wait(0)
+            if preview and preview.ready and GetGameTimer() >= (paint.hideUntil or 0) then
+                drawTag(paint.fake, preview, paint.alpha)
+            end
+            if paint.untilT and (GetGameTimer() > paint.untilT or realTagUp(paint)) then
+                painting = nil
+            end
+        end
+    end)
+    return paint
+end
+
+local function sprayAt(payload, coords, normal, scale, set, kit)
+    local ped = PlayerPedId()
+    local cfg = sprayCfg()
+    local hex = paintColour(payload)
+    local paint = startPainting(coords, normal, scale)
+
+    if cfg.walkUp and not walkUp(ped, coords, normal) then
+        painting = nil
+        return false, "You can't get to that spot."
+    end
+    local heading = faceWall(ped, coords, normal)
+
+    local dictOk = set and loadDict(set.dict) or false
+    local shakeMs = (dictOk and set.shake) and math.max(1000, math.min(3000, clipMs(set, set.shake, 1600))) or 0
+    local sprayMs = math.max(1, tonumber(Config.Graffiti.sprayDuration) or 6) * 1000
+    local net = (can and DoesEntityExist(can) and NetworkGetEntityIsNetworked(can)) and ObjToNet(can) or nil
+    local mistReady = cfg.mist and can and loadMist(kit)
+    local face = dictOk and set.face and loadDict(set.face.dict) and set.face or nil
+
+    local r = {
+        active = true, set = dictOk and set or nil, kit = kit, hex = hex, heading = heading,
+        synced = dictOk and set.suffix ~= nil and can ~= nil and net ~= nil,
+        fx = nil, clip = nil, scene = nil, shared = false,
+    }
+    run = r
+
+    paint.hideUntil = GetGameTimer() + 300
+    paint.alpha = 255
+    revealPreview(sprayMs, shakeMs)
+
+    CreateThread(function()
+        local function hold(ms)
+            local untilT = GetGameTimer() + ms
+            while r.active and GetGameTimer() < untilT do
+                Wait(0)
+                if r.active then keepHissing(r, can) end
+            end
+            return r.active
+        end
+
+        if not r.active then return end
+        if shakeMs > 0 then
+            playClip(r, r.set.shake, false, true)
+            if cfg.sound then sound('self', 'shake', { ms = shakeMs, vol = cfg.volume }) end
+            share({ net = net, color = hex, kit = kit.name, shake = shakeMs })
+            r.shared = true
+            if not hold(shakeMs) then return end
+        end
+        if face then PlayFacialAnim(PlayerPedId(), face.clip, face.dict) end
+
+        local endsAt = GetGameTimer() + sprayMs
+        local i = 0
+        while r.active and GetGameTimer() < endsAt do
+            i = i + 1
+            local burst = 2400
+            if r.set then
+                local clip = r.set.spray[((i - 1) % #r.set.spray) + 1]
+                playClip(r, clip, true, shakeMs == 0 and i == 1)
+                burst = clipMs(r.set, clip, 2400)
+            end
+            burst = math.min(burst, endsAt - GetGameTimer())
+
+            if mistReady and not r.fx then r.fx = mistOn(can, hex, kit) end
+            if cfg.sound and not r.snd then
+                r.snd = hissOn(can)
+                r.sndAt = GetGameTimer()
+            end
+            share({ net = net, color = hex, kit = kit.name, on = true })
+            r.shared = true
+            if not hold(burst - 150) then return end
+
+            if r.fx then mistPuff(can, hex, kit) end
+            mistOff(r.fx)
+            r.fx = nil
+            hissOff(r.snd)
+            r.snd = nil
+            share({ net = net, color = hex, kit = kit.name, on = false })
+            if not hold(150) then return end
+        end
+    end)
+
+    local finished = XSAnim.Progress({
+        duration = shakeMs + sprayMs,
+        label = 'Tagging...',
+        useWhileDead = false,
+        canCancel = true,
+        disable = { move = true, car = true, combat = true },
+    })
+    stopEffects()
+
+    if finished then
+        paint.untilT = GetGameTimer() + 6000
+    else
+        painting = nil
+    end
+    return finished
+end
+
 local function previewArtFor(payload)
     payload = payload or {}
     if payload.kind == 'draw' and payload.data then return 'draw:' .. payload.data end
@@ -402,80 +956,10 @@ local function previewArtFor(payload)
     return ''
 end
 
--- The tagging animation. Kept in config because anim dictionaries are the
--- first thing a server owner wants to swap, and because a dict that fails
--- to stream should degrade to "no animation" rather than to a stuck spray.
--- Anim dictionaries vary by build, so try each candidate in turn and use
--- the first that actually streams instead of betting the whole animation
--- on one name being right.
--- Config's own entry first, then the fallbacks, flattened for the
--- progress bar to pick from.
-local function sprayAnimCandidates()
-    local cfg = Config.Graffiti.anim or {}
-    local out = {}
-    if cfg.dict and cfg.dict ~= '' and cfg.clip then
-        out[#out + 1] = { dict = cfg.dict, clip = cfg.clip }
-    end
-    for _, c in ipairs(cfg.candidates or {}) do out[#out + 1] = c end
-    return out
-end
-
--- Visible spray coming out of the can.
---
--- GTA ships no paint effect, so this is a small puff tinted to whatever
--- colour is going on the wall — an approximation, not the real thing.
--- Swap the asset in config for anything you prefer, or set enabled=false.
---
--- Returns a stop function: the puffing has to end WITH the progress bar,
--- not on its own timer, or it carries on after the player has finished.
-local function sprayParticles(coords, normal, hex)
-    local fx = Config.Graffiti.anim and Config.Graffiti.anim.ptfx
-    if not fx or fx.enabled == false or not fx.asset or fx.asset == '' then return function() end end
-
-    local running = true
-    CreateThread(function()
-        RequestNamedPtfxAsset(fx.asset)
-        local waited = 0
-        while not HasNamedPtfxAssetLoaded(fx.asset) and waited < 1500 do
-            Wait(50)
-            waited = waited + 50
-        end
-        if not HasNamedPtfxAssetLoaded(fx.asset) then return end
-
-        local r, g, b = hexToRgb(hex or '#3d7dff')
-        local at = coords + normal * 0.15
-        while running do
-            UseParticleFxAssetNextCall(fx.asset)
-            SetParticleFxNonLoopedColour(r / 255, g / 255, b / 255)
-            SetParticleFxNonLoopedAlpha(fx.alpha or 0.7)
-            StartParticleFxNonLoopedAtCoord(fx.name, at.x, at.y, at.z, 0.0, 0.0, 0.0, fx.scale or 0.35)
-            Wait(fx.intervalMs or 130)
-        end
-    end)
-
-    return function() running = false end
-end
-
-local function sprayProp()
-    local model = Config.Graffiti.anim and Config.Graffiti.anim.prop
-    if not model or model == '' then return nil end
-    if not IsModelValid(model) or not XSModel.Load(model) then return nil end
-
-    local ped = PlayerPedId()
-    local coords = GetEntityCoords(ped)
-    local obj = CreateObject(model, coords.x, coords.y, coords.z, true, true, false)
-    AttachEntityToEntity(obj, ped, GetPedBoneIndex(ped, 28422),
-        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, true, true, false, true, 1, true)
-    return obj
-end
-
 -- `payload` is whatever the studio composed: a library/catalogue pick, a
 -- text composition, or a freehand drawing.
 function Graffiti.StartSpray(payload)
-    if spraying then
-        -- A previous run that died mid-way would otherwise lock spraying
-        -- out entirely until the resource restarted, which reads exactly
-        -- like "the spray button does nothing".
+    if spraying or run then
         stopSpraying()
         Wait(0)
     end
@@ -483,9 +967,23 @@ function Graffiti.StartSpray(payload)
         lib.notify({ description = 'Graffiti is switched off on this server.', type = 'error' })
         return
     end
+    local ped = PlayerPedId()
+    if IsPedInAnyVehicle(ped, false) then
+        lib.notify({ description = 'Get out of the vehicle first.', type = 'error' })
+        return
+    end
+    local ready = lib.callback.await('XS-CriminalTablet:graffiti:ready', false)
+    if not (ready and ready.ok) then
+        lib.notify({ description = (ready and ready.error) or 'You cannot spray right now.', type = 'error' })
+        return
+    end
 
     spraying = true
     local scale = 1.0
+    local set = pickSet(ped)
+    local kit = pickKit()
+    SetCurrentPedWeapon(ped, GetHashKey('WEAPON_UNARMED'), true)
+    takeCan(set, kit)
     previewSurface({
         previewArt = previewArtFor(payload),
         tint = (payload and payload.tint) or nil,
@@ -494,17 +992,26 @@ function Graffiti.StartSpray(payload)
     lib.showTextUI('[Scroll] Size   [E] Spray   [Backspace] Cancel')
 
     CreateThread(function()
-        -- Any error below must still release the lock, or the next spray
-        -- silently does nothing at all.
+        local sprayed = false
         local ok, err = pcall(function()
             while spraying do
                 Wait(0)
+                local me = PlayerPedId()
+                if IsPedInAnyVehicle(me, false) or IsEntityDead(me) then
+                    spraying = false
+                    break
+                end
                 local coords, normal = aimedSurface()
 
                 DisableControlAction(0, 14, true)
                 DisableControlAction(0, 15, true)
                 DisableControlAction(0, 38, true)
                 DisableControlAction(0, 194, true)
+                DisableControlAction(0, 24, true)
+                DisableControlAction(0, 25, true)
+                DisableControlAction(0, 140, true)
+                DisableControlAction(0, 141, true)
+                DisableControlAction(0, 142, true)
 
                 if IsDisabledControlJustPressed(0, 14) then
                     scale = math.min(Config.Graffiti.maxScale, scale + 0.1)
@@ -514,61 +1021,41 @@ function Graffiti.StartSpray(payload)
                 end
 
                 if coords then
-                    previewQuad(coords, normal, scale, true)
+                    local inReach = reachable(coords)
+                    previewQuad(coords, normal, scale, inReach, GHOST_ALPHA)
 
-                    if IsDisabledControlJustPressed(0, 38) then
+                    if not inReach then
+                        hint('Too high to reach')
+                    elseif IsDisabledControlJustPressed(0, 38) then
                         spraying = false
                         lib.hideTextUI()
 
-                        local prop = sprayProp()
-                        local stopFx = sprayParticles(coords, normal,
-                            (payload and (payload.tint or payload.fill)) or nil)
-
-                        -- Let the progress bar own the animation, the same
-                        -- way the medic and the stash do. Playing it by
-                        -- hand alongside meant two things fighting over
-                        -- the ped and neither cleaning up.
-                        local finished = XSAnim.Progress({
-                            duration = Config.Graffiti.sprayDuration * 1000,
-                            label = 'Tagging...',
-                            useWhileDead = false,
-                            canCancel = true,
-                            disable = { move = true, combat = true },
-                            anims = sprayAnimCandidates(),
-                        })
-
-                        stopFx()
-                        ClearPedTasks(PlayerPedId())
-                        if prop and DoesEntityExist(prop) then DeleteEntity(prop) end
-
+                        local finished, why = sprayAt(payload, coords, normal, scale, set, kit)
                         if finished then
+                            sprayed = true
                             local body = {}
-                            for k, v in pairs(payload or {}) do body[k] = v end
+                            for k, v in pairs(payload or {}) do
+                                if k ~= 'paint' then body[k] = v end
+                            end
                             body.coords = { x = coords.x, y = coords.y, z = coords.z }
                             body.rx, body.ry, body.rz = normal.x, normal.y, normal.z
                             body.scale = scale
 
                             local res = lib.callback.await('XS-CriminalTablet:graffiti:spray', false, body)
+                            if not (res and res.ok) then painting = nil end
                             lib.notify({
                                 description = (res and res.ok) and 'Tag is up.' or ((res and res.error) or 'Could not spray that'),
                                 type = (res and res.ok) and 'success' or 'error',
                             })
+                        elseif why then
+                            lib.notify({ description = why, type = 'error' })
                         end
                     end
                 else
-                    -- Nothing in range: say so rather than letting the player
-                    -- press E at thin air and wonder why nothing happens.
-                    SetTextFont(4)
-                    SetTextScale(0.0, 0.36)
-                    SetTextColour(255, 77, 90, 230)
-                    SetTextCentre(true)
-                    SetTextOutline()
-                    BeginTextCommandDisplayText('STRING')
-                    AddTextComponentSubstringPlayerName('Aim at a wall')
-                    EndTextCommandDisplayText(0.5, 0.86)
+                    hint('Aim at a wall')
                 end
 
-                if IsDisabledControlJustPressed(0, 194) then
+                if spraying and IsDisabledControlJustPressed(0, 194) then
                     spraying = false
                     lib.hideTextUI()
                     lib.notify({ description = 'Cancelled.', type = 'inform' })
@@ -576,8 +1063,9 @@ function Graffiti.StartSpray(payload)
             end
         end)
 
-        stopSpraying()
+        stopSpraying(sprayed)
         if not ok then
+            painting = nil
             print('^1[XS-CriminalTablet]^0 spray loop error: ' .. tostring(err))
             lib.notify({ description = 'Spraying broke — try again.', type = 'error' })
         end
@@ -587,8 +1075,9 @@ end
 -- Dying mid-spray used to leave the lock set forever.
 AddEventHandler('gameEventTriggered', function(name, args)
     if name ~= 'CEventNetworkEntityDamage' then return end
-    if not spraying then return end
+    if not spraying and not run then return end
     if args[1] ~= PlayerPedId() or args[6] ~= 1 then return end
+    painting = nil
     stopSpraying()
 end)
 
@@ -737,8 +1226,12 @@ end, false)
 AddEventHandler('onResourceStop', function(resource)
     if resource ~= GetCurrentResourceName() then return end
     for id in pairs(live) do destroySurface(id) end
+    for sid in pairs(watching) do stopWatching(sid) end
+    painting = nil
+    if spraying or run or can then stopSpraying() end
 end)
 
 RegisterNetEvent('QBCore:Client:OnPlayerUnload', function()
-    if spraying then stopSpraying() end
+    painting = nil
+    if spraying or run or can then stopSpraying() end
 end)

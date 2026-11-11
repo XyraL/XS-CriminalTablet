@@ -17,6 +17,12 @@
     const $$ = window.XS.$$;
 
     let library = null;
+
+    async function sprayNow(payload) {
+        const res = await nui('spray', payload);
+        if (res && res.ok === false) flash(res.error || 'You cannot spray right now.', 'error');
+    }
+
     let fonts = [];
 
     // ── art preview ──
@@ -108,11 +114,12 @@
             </div>`).join('');
 
         grid.querySelectorAll('[data-spray]').forEach((b) => {
-            b.onclick = () => nui('spray', {
+            b.onclick = () => sprayNow({
                 kind: 'library',
                 artId: Number(b.dataset.spray),
                 // Preview only — the server resolves the real art from artId.
                 previewArt: b.dataset.art || '',
+                paint: library.color || '',
             });
         });
         grid.querySelectorAll('[data-delart]').forEach((b) => {
@@ -235,7 +242,7 @@
     $('#sprayTextBtn').onclick = () => {
         const p = textPayload();
         if (!p.text.trim()) return flash('Type something first.', 'error');
-        nui('spray', p);
+        sprayNow(p);
     };
 
     $('#saveTextBtn').onclick = async () => {
@@ -318,13 +325,16 @@
     // busy drawing gets refused rather than silently truncated.
     function drawPayload() {
         if (!strokes.length) return null;
-        return { kind: 'draw', data: canvas.toDataURL('image/png') };
+        const used = {};
+        strokes.forEach((st) => { used[st.color] = (used[st.color] || 0) + st.points.length * st.size; });
+        const paint = Object.keys(used).sort((a, b) => used[b] - used[a])[0] || '';
+        return { kind: 'draw', data: canvas.toDataURL('image/png'), paint };
     }
 
     $('#sprayDrawBtn').onclick = () => {
         const p = drawPayload();
         if (!p) return flash('Draw something first.', 'error');
-        nui('spray', p);
+        sprayNow(p);
     };
 
     $('#saveDrawBtn').onclick = async () => {

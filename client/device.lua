@@ -255,8 +255,13 @@ RegisterNUICallback('placeObject', function(data, cb)
 end)
 
 RegisterNUICallback('spray', function(data, cb)
+    local ready = lib.callback.await('XS-CriminalTablet:graffiti:ready', false)
+    if not (ready and ready.ok) then
+        cb({ ok = false, error = (ready and ready.error) or 'You cannot spray right now.' })
+        return
+    end
     closeDevice()
-    cb({})
+    cb({ ok = true })
     CreateThread(function() TriggerEvent('XS-CriminalTablet:client:startSpray', data) end)
 end)
 
